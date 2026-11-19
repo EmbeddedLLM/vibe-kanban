@@ -5,6 +5,7 @@ import {
   CloudIcon,
   CpuIcon,
   PlugIcon,
+  KeyIcon,
   BroadcastIcon,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
@@ -14,6 +15,7 @@ import { OrganizationsSettingsSection } from './OrganizationsSettingsSection';
 import { RemoteProjectsSettingsSection } from './RemoteProjectsSettingsSection';
 import { AgentsSettingsSection } from './AgentsSettingsSection';
 import { McpSettingsSection } from './McpSettingsSection';
+import { McpAccessSettingsSection } from './McpAccessSettingsSection';
 import { RelaySettingsSectionContent } from './RelaySettingsSection';
 
 export type SettingsSectionType =
@@ -23,6 +25,7 @@ export type SettingsSectionType =
   | 'remote-projects'
   | 'agents'
   | 'mcp'
+  | 'mcp-access'
   | 'relay';
 
 export type SettingsSectionGroup = 'host' | 'universal';
@@ -35,6 +38,7 @@ export type SettingsSectionInitialState = {
     { organizationId?: string; projectId?: string } | undefined;
   agents: { executor?: string; variant?: string } | undefined;
   mcp: undefined;
+  'mcp-access': undefined;
   relay: { hostId?: string } | undefined;
 };
 
@@ -44,15 +48,22 @@ export interface SettingsSectionDefinition {
   group: SettingsSectionGroup;
 }
 
-export const SETTINGS_SECTION_DEFINITIONS: SettingsSectionDefinition[] = [
+const settingsSections: SettingsSectionDefinition[] = [
   { id: 'general', icon: GearIcon, group: 'host' },
   { id: 'repos', icon: GitBranchIcon, group: 'host' },
   { id: 'agents', icon: CpuIcon, group: 'host' },
   { id: 'mcp', icon: PlugIcon, group: 'host' },
   { id: 'organizations', icon: BuildingsIcon, group: 'universal' },
   { id: 'remote-projects', icon: CloudIcon, group: 'universal' },
+  { id: 'mcp-access', icon: KeyIcon, group: 'universal' },
   { id: 'relay', icon: BroadcastIcon, group: 'universal' },
 ];
+
+export const SETTINGS_SECTION_DEFINITIONS = settingsSections.filter(
+  (section) =>
+    section.id !== 'mcp-access' ||
+    import.meta.env.VITE_SELF_HOSTED_BOARD === 'true'
+);
 
 export function isHostSpecificSettingsSection(
   type: SettingsSectionType
@@ -91,6 +102,8 @@ export function renderSettingsSection(
       return <AgentsSettingsSection />;
     case 'mcp':
       return <McpSettingsSection />;
+    case 'mcp-access':
+      return <McpAccessSettingsSection />;
     case 'relay':
       return (
         <RelaySettingsSectionContent

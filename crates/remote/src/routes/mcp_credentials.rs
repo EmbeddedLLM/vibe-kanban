@@ -36,6 +36,7 @@ struct Credential {
     id: Uuid,
     name: String,
     project_id: Uuid,
+    project_name: String,
     expires_at: DateTime<Utc>,
 }
 
@@ -81,9 +82,13 @@ async fn create_credential(
     let token = format!("{TOKEN_PREFIX}{}", hex::encode(random));
     let token_hash = hash_token(&token);
     let credential = sqlx::query_as::<_, Credential>(
-        "INSERT INTO mcp_credentials (token_hash, name, project_id, organization_id, user_id)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, name, project_id, expires_at",
+        "WITH issued AS (
+             INSERT INTO mcp_credentials (token_hash, name, project_id, organization_id, user_id)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id, name, project_id, expires_at
+         )
+         SELECT issued.*, p.name AS project_name
+         FROM issued JOIN projects p ON p.id = issued.project_id",
     )
     .bind(&token_hash[..])
     .bind(name)
@@ -106,8 +111,9 @@ async fn list_credentials(
     Extension(ctx): Extension<RequestContext>,
 ) -> Result<Json<Vec<Credential>>, ErrorResponse> {
     let credentials = sqlx::query_as::<_, Credential>(
-        "SELECT id, name, project_id, expires_at FROM mcp_credentials
-         WHERE user_id = $1 ORDER BY expires_at DESC, id",
+        "SELECT c.id, c.name, c.project_id, p.name AS project_name, c.expires_at
+         FROM mcp_credentials c JOIN projects p ON p.id = c.project_id
+         WHERE c.user_id = $1 ORDER BY c.expires_at DESC, c.id",
     )
     .bind(ctx.user.id)
     .fetch_all(state.pool())

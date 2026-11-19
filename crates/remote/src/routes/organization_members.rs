@@ -65,13 +65,34 @@ struct CreateInvitationRequest {
 }
 
 #[derive(Debug, Serialize)]
+struct ShareableInvitation {
+    #[serde(flatten)]
+    invitation: Invitation,
+    accept_url: String,
+}
+
+impl ShareableInvitation {
+    fn new(invitation: Invitation, base_url: &str) -> Self {
+        let accept_url = format!(
+            "{}/invitations/{}/accept",
+            base_url.trim_end_matches('/'),
+            invitation.token
+        );
+        Self {
+            invitation,
+            accept_url,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 struct CreateInvitationResponse {
-    pub invitation: Invitation,
+    invitation: ShareableInvitation,
 }
 
 #[derive(Debug, Serialize)]
 struct ListInvitationsResponse {
-    pub invitations: Vec<Invitation>,
+    invitations: Vec<ShareableInvitation>,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,16 +153,13 @@ async fn create_invitation(
         )
     })?;
 
-    let accept_url = format!(
-        "{}/invitations/{}/accept",
-        state.server_public_base_url, token
-    );
+    let shareable = ShareableInvitation::new(invitation, &state.server_public_base_url);
     state
         .mailer
         .send_org_invitation(
             &organization.name,
             &payload.email,
-            &accept_url,
+            &shareable.accept_url,
             payload.role,
             user.username.as_deref(),
         )
@@ -150,7 +168,7 @@ async fn create_invitation(
     audit::emit(
         AuditEvent::system(AuditAction::MemberInvite)
             .user(user.id, Some(session_id))
-            .resource("invitation", Some(invitation.id))
+            .resource("invitation", Some(shareable.invitation.id))
             .organization(org_id)
             .http(
                 "POST",
@@ -165,7 +183,7 @@ async fn create_invitation(
             user.id,
             "invitation_created",
             serde_json::json!({
-                "invitation_id": invitation.id,
+                "invitation_id": shareable.invitation.id,
                 "organization_id": org_id,
                 "role": format!("{:?}", payload.role),
             }),
@@ -174,7 +192,9 @@ async fn create_invitation(
 
     Ok((
         StatusCode::CREATED,
-        Json(CreateInvitationResponse { invitation }),
+        Json(CreateInvitationResponse {
+            invitation: shareable,
+        }),
     ))
 }
 
@@ -199,6 +219,10 @@ async fn list_invitations(
             _ => ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "Database error"),
         })?;
 
+    let invitations = invitations
+        .into_iter()
+        .map(|invitation| ShareableInvitation::new(invitation, &state.server_public_base_url))
+        .collect();
     Ok(Json(ListInvitationsResponse { invitations }))
 }
 

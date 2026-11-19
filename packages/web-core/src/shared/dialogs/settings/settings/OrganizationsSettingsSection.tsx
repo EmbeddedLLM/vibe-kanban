@@ -173,7 +173,7 @@ export function OrganizationsSettingsSection() {
       });
 
       if (result.action === 'invited') {
-        setSuccess('Member invited successfully');
+        setSuccess(t('inviteDialog.created'));
         setTimeout(() => setSuccess(null), 3000);
       }
     } catch {

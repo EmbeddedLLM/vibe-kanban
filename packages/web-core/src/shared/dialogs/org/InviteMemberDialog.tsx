@@ -23,6 +23,9 @@ import { useOrganizationMutations } from '@/shared/hooks/useOrganizationMutation
 import { MemberRole } from 'shared/types';
 import { useTranslation } from 'react-i18next';
 import { defineModal } from '@/shared/lib/modals';
+import type { ShareableInvitation } from '@/shared/lib/api';
+import { CopyableField } from '@/shared/components/CopyableField';
+import { getPendingInvitationLink } from '@/shared/lib/invitationLink';
 
 export type InviteMemberResult = {
   action: 'invited' | 'canceled';
@@ -39,12 +42,12 @@ const InviteMemberDialogImpl = create<InviteMemberDialogProps>((props) => {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<MemberRole>(MemberRole.MEMBER);
   const [error, setError] = useState<string | null>(null);
+  const [invitation, setInvitation] = useState<ShareableInvitation | null>(
+    null
+  );
 
   const { createInvitation } = useOrganizationMutations({
-    onInviteSuccess: () => {
-      modal.resolve({ action: 'invited' } as InviteMemberResult);
-      modal.hide();
-    },
+    onInviteSuccess: ({ invitation }) => setInvitation(invitation),
     onInviteError: (err) => {
       setError(
         err instanceof Error ? err.message : 'Failed to send invitation'
@@ -58,6 +61,7 @@ const InviteMemberDialogImpl = create<InviteMemberDialogProps>((props) => {
       setEmail('');
       setRole(MemberRole.MEMBER);
       setError(null);
+      setInvitation(null);
     }
   }, [modal.visible]);
 
@@ -96,16 +100,48 @@ const InviteMemberDialogImpl = create<InviteMemberDialogProps>((props) => {
     });
   };
 
-  const handleCancel = () => {
-    modal.resolve({ action: 'canceled' } as InviteMemberResult);
+  const handleClose = () => {
+    modal.resolve({
+      action: invitation ? 'invited' : 'canceled',
+    } as InviteMemberResult);
     modal.hide();
   };
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
-      handleCancel();
+      handleClose();
     }
   };
+
+  if (invitation) {
+    const inviteLink = getPendingInvitationLink(invitation);
+    return (
+      <Dialog open={modal.visible} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('inviteDialog.created')}</DialogTitle>
+            <DialogDescription>
+              {t(
+                inviteLink
+                  ? 'inviteDialog.shareLink'
+                  : 'inviteDialog.description'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {inviteLink && (
+            <CopyableField
+              label={t('invitationList.link')}
+              value={inviteLink}
+              copyLabel={t('invitationList.copyLink')}
+            />
+          )}
+          <DialogFooter>
+            <Button onClick={handleClose}>{t('common:buttons.close')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={modal.visible} onOpenChange={handleOpenChange}>
@@ -166,7 +202,7 @@ const InviteMemberDialogImpl = create<InviteMemberDialogProps>((props) => {
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={handleCancel}
+            onClick={handleClose}
             disabled={createInvitation.isPending}
           >
             {t('common:buttons.cancel')}

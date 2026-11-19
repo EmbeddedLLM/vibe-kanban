@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { organizationsApi } from '@/shared/lib/api';
+import {
+  organizationsApi,
+  type ShareableInvitationResponse,
+} from '@/shared/lib/api';
 import type {
   CreateOrganizationRequest,
   CreateOrganizationResponse,
   MemberRole,
   CreateInvitationRequest,
-  CreateInvitationResponse,
   ListOrganizationsResponse,
   UpdateMemberRoleResponse,
 } from 'shared/types';
@@ -14,7 +16,7 @@ import { organizationKeys } from '@/shared/hooks/organizationKeys';
 interface UseOrganizationMutationsOptions {
   onCreateSuccess?: (result: CreateOrganizationResponse) => void;
   onCreateError?: (err: unknown) => void;
-  onInviteSuccess?: (result: CreateInvitationResponse) => void;
+  onInviteSuccess?: (result: ShareableInvitationResponse) => void;
   onInviteError?: (err: unknown) => void;
   onRevokeSuccess?: () => void;
   onRevokeError?: (err: unknown) => void;
@@ -63,7 +65,7 @@ export function useOrganizationMutations(
       orgId: string;
       data: CreateInvitationRequest;
     }) => organizationsApi.createInvitation(orgId, data),
-    onSuccess: (result: CreateInvitationResponse, variables) => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({
         queryKey: organizationKeys.members(variables.orgId),
       });

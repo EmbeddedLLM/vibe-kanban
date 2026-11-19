@@ -1,12 +1,14 @@
 import { Badge } from '@vibe/ui/components/Badge';
 import { Button } from '@vibe/ui/components/Button';
-import type { Invitation } from 'shared/types';
+import type { ShareableInvitation } from '@/shared/lib/api';
+import { CopyableField } from '@/shared/components/CopyableField';
+import { getPendingInvitationLink } from '@/shared/lib/invitationLink';
 import { MemberRole } from 'shared/types';
 import { useTranslation } from 'react-i18next';
 import { Trash2 } from 'lucide-react';
 
 interface PendingInvitationItemProps {
-  invitation: Invitation;
+  invitation: ShareableInvitation;
   onRevoke?: (invitationId: string) => void;
   isRevoking?: boolean;
 }
@@ -17,6 +19,10 @@ export function PendingInvitationItem({
   isRevoking,
 }: PendingInvitationItemProps) {
   const { t } = useTranslation('organization');
+  const expiresAt = new Date(invitation.expires_at);
+  const now = Date.now();
+  const expired = expiresAt.getTime() <= now;
+  const inviteLink = getPendingInvitationLink(invitation, now);
 
   const handleRevoke = () => {
     const confirmed = window.confirm(
@@ -28,34 +34,52 @@ export function PendingInvitationItem({
   };
 
   return (
-    <div className="flex items-center justify-between p-3 border rounded-lg">
-      <div className="flex items-center gap-3">
-        <div>
-          <div className="font-medium text-sm">{invitation.email}</div>
-          <div className="text-xs text-muted-foreground">
-            {t('invitationList.invited', {
-              date: new Date(invitation.created_at).toLocaleDateString(),
-            })}
+    <div className="space-y-3 p-3 border rounded-lg">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-3 min-w-0">
+          <div className="min-w-0">
+            <div className="font-medium text-sm break-all">
+              {invitation.email}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {t('invitationList.invited', {
+                date: new Date(invitation.created_at).toLocaleDateString(),
+              })}
+              {' · '}
+              {t('invitationList.expires', {
+                date: expiresAt.toLocaleDateString(),
+              })}
+            </div>
           </div>
+          <Badge
+            variant={
+              invitation.role === MemberRole.ADMIN ? 'default' : 'secondary'
+            }
+          >
+            {t('roles.' + invitation.role.toLowerCase())}
+          </Badge>
+          <Badge variant="outline">
+            {t(expired ? 'invitationList.expired' : 'invitationList.pending')}
+          </Badge>
         </div>
-        <Badge
-          variant={
-            invitation.role === MemberRole.ADMIN ? 'default' : 'secondary'
-          }
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleRevoke}
+          disabled={isRevoking}
+          aria-label={t('invitationList.revoke')}
+          title={t('invitationList.revoke')}
         >
-          {t('roles.' + invitation.role.toLowerCase())}
-        </Badge>
-        <Badge variant="outline">{t('invitationList.pending')}</Badge>
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={handleRevoke}
-        disabled={isRevoking}
-        title="Revoke invitation"
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      {inviteLink && (
+        <CopyableField
+          label={t('invitationList.link')}
+          value={inviteLink}
+          copyLabel={t('invitationList.copyLink')}
+        />
+      )}
     </div>
   );
 }

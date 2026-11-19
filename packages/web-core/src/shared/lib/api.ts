@@ -1341,6 +1341,43 @@ const handleRemoteResponse = async <T>(response: Response): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+export type ShareableInvitation = Invitation & { accept_url?: string };
+
+export type ShareableInvitationResponse = CreateInvitationResponse & {
+  invitation: ShareableInvitation;
+};
+
+export interface McpCredential {
+  id: string;
+  name: string;
+  project_id: string;
+  project_name?: string;
+  expires_at: string;
+}
+
+export const mcpCredentialsApi = {
+  list: async (signal?: AbortSignal): Promise<McpCredential[]> => {
+    const response = await makeRemoteRequest('/v1/mcp_credentials', { signal });
+    return handleRemoteResponse<McpCredential[]>(response);
+  },
+
+  create: async (data: { name: string; project_id: string }) => {
+    const response = await makeRemoteRequest('/v1/mcp_credentials', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleRemoteResponse<McpCredential & { token: string }>(response);
+  },
+
+  revoke: async (id: string) => {
+    const response = await makeRemoteRequest(
+      `/v1/mcp_credentials/${encodeURIComponent(id)}`,
+      { method: 'DELETE' }
+    );
+    return handleRemoteResponse<void>(response);
+  },
+};
+
 // Organizations API
 export const organizationsApi = {
   getMembers: async (
@@ -1372,7 +1409,7 @@ export const organizationsApi = {
   createInvitation: async (
     orgId: string,
     data: CreateInvitationRequest
-  ): Promise<CreateInvitationResponse> => {
+  ): Promise<ShareableInvitationResponse> => {
     const response = await makeRemoteRequest(
       `/v1/organizations/${orgId}/invitations`,
       {
@@ -1381,7 +1418,7 @@ export const organizationsApi = {
         body: JSON.stringify(data),
       }
     );
-    return handleRemoteResponse<CreateInvitationResponse>(response);
+    return handleRemoteResponse<ShareableInvitationResponse>(response);
   },
 
   removeMember: async (orgId: string, userId: string): Promise<void> => {
@@ -1410,12 +1447,13 @@ export const organizationsApi = {
     return handleRemoteResponse<UpdateMemberRoleResponse>(response);
   },
 
-  listInvitations: async (orgId: string): Promise<Invitation[]> => {
+  listInvitations: async (orgId: string): Promise<ShareableInvitation[]> => {
     const response = await makeRemoteRequest(
       `/v1/organizations/${orgId}/invitations`
     );
-    const result =
-      await handleRemoteResponse<ListInvitationsResponse>(response);
+    const result = await handleRemoteResponse<
+      ListInvitationsResponse & { invitations: ShareableInvitation[] }
+    >(response);
     return result.invitations;
   },
 

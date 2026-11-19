@@ -26,6 +26,10 @@
     "notSpecified": "Not specified",
     "selectOption": "Select an option..."
   },
+  "clipboard": {
+    "copied": "Copied to clipboard.",
+    "selected": "Text selected. Use your copy shortcut."
+  },
   "states": {
     "loading": "Loading..."
   },
