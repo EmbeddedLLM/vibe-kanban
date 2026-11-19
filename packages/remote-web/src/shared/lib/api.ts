@@ -10,6 +10,7 @@ export type OAuthProvider = "github" | "google";
 export type AuthMethodsResponse = {
   local_auth_enabled: boolean;
   oauth_providers: string[];
+  password_accounts?: boolean;
 };
 
 type HandoffInitResponse = {
@@ -101,15 +102,78 @@ export async function localLogin(
   email: string,
   password: string,
 ): Promise<LocalLoginResponse> {
-  const res = await fetch(`${API_BASE}/v1/auth/local/login`, {
+  return localAccountRequest("login", { email, password });
+}
+
+export type PasswordInvitation = {
+  organization_name: string;
+  email: string;
+  role: string;
+  expires_at: string;
+};
+
+async function localAccountRequest<T>(path: string, body: object): Promise<T> {
+  const res = await fetch(`${API_BASE}/v1/auth/local/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(`Local login failed (${res.status})`);
+    const details = await res.json().catch(() => null);
+    throw new Error(details?.error || `Account request failed (${res.status})`);
+  }
+  if (res.status === 204) {
+    return undefined as T;
   }
   return res.json();
+}
+
+export function previewPasswordInvitation(
+  token: string,
+): Promise<PasswordInvitation> {
+  return localAccountRequest("invitations/preview", { token });
+}
+
+export function acceptPasswordInvitation(
+  token: string,
+  displayName: string,
+  password: string,
+) {
+  return localAccountRequest<
+    LocalLoginResponse & {
+      organization_id: string;
+      project_id: string | null;
+    }
+  >("invitations/accept", { token, display_name: displayName, password });
+}
+
+export function resetLocalPassword(
+  token: string,
+  password: string,
+): Promise<void> {
+  return localAccountRequest("password/reset", { token, password });
+}
+
+export async function changeLocalPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const accessToken = await getToken();
+  const res = await fetch(`${API_BASE}/v1/auth/local/password/change`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+  if (!res.ok) {
+    const details = await res.json().catch(() => null);
+    throw new Error(details?.error || "Could not change password.");
+  }
 }
 
 export async function getInvitation(

@@ -9,7 +9,7 @@ export function getPendingInvitationLink(
     invitation.status === InvitationStatus.PENDING &&
     Date.parse(invitation.expires_at) > now
   ) {
-    return invitation.accept_url;
+    return invitation.accept_url ?? undefined;
   }
   return undefined;
 }

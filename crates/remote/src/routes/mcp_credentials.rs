@@ -81,6 +81,23 @@ async fn create_credential(
     rand::rng().fill_bytes(&mut random);
     let token = format!("{TOKEN_PREFIX}{}", hex::encode(random));
     let token_hash = hash_token(&token);
+    let mut tx = state.pool().begin().await.map_err(credential_db_error)?;
+    if sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM auth_sessions
+         WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL FOR UPDATE",
+    )
+    .bind(ctx.session_id)
+    .bind(ctx.user.id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(credential_db_error)?
+    .is_none()
+    {
+        return Err(ErrorResponse::new(
+            StatusCode::UNAUTHORIZED,
+            "Session expired",
+        ));
+    }
     let credential = sqlx::query_as::<_, Credential>(
         "WITH issued AS (
              INSERT INTO mcp_credentials (token_hash, name, project_id, organization_id, user_id)
@@ -95,9 +112,10 @@ async fn create_credential(
     .bind(payload.project_id)
     .bind(organization_id)
     .bind(ctx.user.id)
-    .fetch_one(state.pool())
+    .fetch_one(&mut *tx)
     .await
     .map_err(credential_db_error)?;
+    tx.commit().await.map_err(credential_db_error)?;
 
     Ok((
         StatusCode::CREATED,

@@ -1341,7 +1341,10 @@ const handleRemoteResponse = async <T>(response: Response): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
-export type ShareableInvitation = Invitation & { accept_url?: string };
+export type ShareableInvitation = Invitation & {
+  accept_url?: string | null;
+  password_enrollment?: boolean;
+};
 
 export type ShareableInvitationResponse = CreateInvitationResponse & {
   invitation: ShareableInvitation;
@@ -1471,6 +1474,17 @@ export const organizationsApi = {
       }
     );
     return handleRemoteResponse<void>(response);
+  },
+
+  replaceInvitation: async (
+    orgId: string,
+    invitationId: string
+  ): Promise<ShareableInvitationResponse> => {
+    const response = await makeRemoteRequest(
+      `/v1/organizations/${orgId}/invitations/${invitationId}/replace`,
+      { method: 'POST' }
+    );
+    return handleRemoteResponse<ShareableInvitationResponse>(response);
   },
 
   getBillingStatus: async (

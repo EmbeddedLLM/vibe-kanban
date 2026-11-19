@@ -2,26 +2,27 @@ use std::borrow::Cow;
 
 use api_types::{
     AuthMethodsResponse, HandoffInitRequest, HandoffInitResponse, HandoffRedeemRequest,
-    HandoffRedeemResponse, LocalLoginRequest, LocalLoginResponse, ProfileResponse, ProviderProfile,
+    HandoffRedeemResponse, LocalLoginRequest, ProfileResponse, ProviderProfile,
 };
 use axum::{
     Json, Router,
-    extract::{Extension, Path, Query, State},
-    http::StatusCode,
+    extract::{DefaultBodyLimit, Extension, Path, Query, State},
+    http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 use url::Url;
 use uuid::Uuid;
 
+use super::error::ErrorResponse;
 use crate::{
     AppState,
     audit::{self, AuditAction, AuditEvent},
     auth::{
-        CallbackResult, HandoffError, LocalAuthError, RequestContext, auth_methods_response,
-        login as local_login_flow,
+        CallbackResult, HandoffError, RequestContext, auth_methods_response,
+        login as local_login_flow, passwords,
     },
     db::{oauth::OAuthHandoffError, oauth_accounts::OAuthAccountRepository},
 };
@@ -29,15 +30,29 @@ use crate::{
 pub(super) fn public_router() -> Router<AppState> {
     Router::new()
         .route("/auth/methods", get(auth_methods))
-        .route("/auth/local/login", post(local_login))
+        .route(
+            "/auth/local/login",
+            post(local_login).layer(DefaultBodyLimit::max(8 * 1024)),
+        )
         .route("/oauth/web/init", post(web_init))
         .route("/oauth/web/redeem", post(web_redeem))
         .route("/oauth/{provider}/start", get(authorize_start))
         .route("/oauth/{provider}/callback", get(authorize_callback))
 }
 
-async fn auth_methods(State(state): State<AppState>) -> Json<AuthMethodsResponse> {
-    Json(auth_methods_response(&state))
+#[derive(Serialize)]
+struct AuthMethods {
+    #[serde(flatten)]
+    methods: AuthMethodsResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    password_accounts: Option<bool>,
+}
+
+async fn auth_methods(State(state): State<AppState>) -> Json<AuthMethods> {
+    Json(AuthMethods {
+        methods: auth_methods_response(&state),
+        password_accounts: state.config().auth.password_accounts().then_some(true),
+    })
 }
 
 pub(super) fn protected_router() -> Router<AppState> {
@@ -76,6 +91,9 @@ async fn web_redeem(
     State(state): State<AppState>,
     Json(payload): Json<HandoffRedeemRequest>,
 ) -> Response {
+    if state.config().auth.password_accounts() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     let handoff = state.handoff();
     match handoff
         .redeem(payload.handoff_id, &payload.app_code, &payload.app_verifier)
@@ -114,9 +132,17 @@ async fn web_redeem(
 async fn local_login(
     State(state): State<AppState>,
     Json(payload): Json<LocalLoginRequest>,
-) -> Result<Json<LocalLoginResponse>, LocalAuthError> {
-    let response = local_login_flow(&state, &payload).await?;
-    Ok(Json(response))
+) -> Result<Response, Response> {
+    let response = if state.config().auth.password_accounts() {
+        passwords::login(&state, &payload)
+            .await
+            .map_err(|e| ErrorResponse::from(e).into_response())?
+    } else {
+        local_login_flow(&state, &payload)
+            .await
+            .map_err(IntoResponse::into_response)?
+    };
+    Ok(([(header::CACHE_CONTROL, "no-store")], Json(response)).into_response())
 }
 
 #[derive(Debug, Deserialize)]

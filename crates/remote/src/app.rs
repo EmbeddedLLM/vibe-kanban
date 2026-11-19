@@ -25,6 +25,14 @@ use crate::{
 pub struct Server;
 
 impl Server {
+    pub async fn local_reset_link(
+        config: &RemoteServerConfig,
+        email: &str,
+    ) -> anyhow::Result<String> {
+        let pool = db::create_pool(&config.database_url).await?;
+        Ok(crate::auth::passwords::issue_reset_link(&pool, &config.auth, email).await?)
+    }
+
     #[instrument(
         name = "remote_server",
         skip(config, billing),
@@ -38,6 +46,10 @@ impl Server {
         db::migrate(&pool)
             .await
             .context("failed to run database migrations")?;
+
+        crate::auth::passwords::bootstrap(&pool, &config.auth)
+            .await
+            .context("failed to initialise password accounts")?;
 
         if let Some(password) = config.electric_role_password.as_ref() {
             db::ensure_electric_role_password(&pool, password.expose_secret())
@@ -73,7 +85,8 @@ impl Server {
             )?);
         }
 
-        if registry.is_empty() && auth_config.local().is_none() {
+        if registry.is_empty() && auth_config.local().is_none() && !auth_config.password_accounts()
+        {
             bail!("no OAuth providers configured");
         }
 

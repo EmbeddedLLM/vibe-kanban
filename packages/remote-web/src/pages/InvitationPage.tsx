@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
+import PasswordAccountLinkPage from "./PasswordAccountLinkPage";
 import {
   getInvitation,
   initOAuth,
@@ -15,6 +16,18 @@ import {
 
 export default function InvitationPage() {
   const { token } = useParams({ from: "/invitations/$token/accept" });
+  if (token === "local" || token === "reset") {
+    return (
+      <PasswordAccountLinkPage
+        key={token}
+        kind={token === "local" ? "invite" : "reset"}
+      />
+    );
+  }
+  return <LegacyInvitationPage token={token} />;
+}
+
+function LegacyInvitationPage({ token }: { token: string }) {
   const [invitation, setInvitation] = useState<InvitationLookupResponse | null>(
     null,
   );

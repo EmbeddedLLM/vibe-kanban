@@ -17,6 +17,7 @@ vk-billing = ["dep:billing"]
 billing = { git = "ssh://git@github.com/BloopAI/vibe-kanban-private", branch = "main", package = "billing", optional = true }
 
 anyhow = "1.0"
+argon2 = "0.5.3"
 axum = { version = "0.8.4", features = ["macros", "multipart", "ws"] }
 axum-extra = { version = "0.10.3", features = ["typed-header"] }
 aes-gcm = "0.10"

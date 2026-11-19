@@ -371,6 +371,7 @@ pub struct AuthConfig {
     github: Option<OAuthProviderConfig>,
     google: Option<OAuthProviderConfig>,
     local: Option<LocalAuthConfig>,
+    password_accounts: bool,
     jwt_secret: SecretString,
     public_base_url: String,
 }
@@ -381,9 +382,11 @@ impl AuthConfig {
             .map_err(|_| ConfigError::MissingVar("VIBEKANBAN_REMOTE_JWT_SECRET"))?;
         validate_jwt_secret(&jwt_secret)?;
         let jwt_secret = SecretString::new(jwt_secret.into());
+        let password_accounts = env::var("SELF_HOST_PASSWORD_ACCOUNTS")
+            .is_ok_and(|value| value.eq_ignore_ascii_case("true"));
 
         let github = match env::var("GITHUB_OAUTH_CLIENT_ID") {
-            Ok(client_id) if !client_id.is_empty() => {
+            Ok(client_id) if !password_accounts && !client_id.is_empty() => {
                 let client_secret = env::var("GITHUB_OAUTH_CLIENT_SECRET")
                     .map_err(|_| ConfigError::MissingVar("GITHUB_OAUTH_CLIENT_SECRET"))?;
                 Some(OAuthProviderConfig::new(
@@ -395,7 +398,7 @@ impl AuthConfig {
         };
 
         let google = match env::var("GOOGLE_OAUTH_CLIENT_ID") {
-            Ok(client_id) if !client_id.is_empty() => {
+            Ok(client_id) if !password_accounts && !client_id.is_empty() => {
                 let client_secret = env::var("GOOGLE_OAUTH_CLIENT_SECRET")
                     .map_err(|_| ConfigError::MissingVar("GOOGLE_OAUTH_CLIENT_SECRET"))?;
                 Some(OAuthProviderConfig::new(
@@ -408,7 +411,7 @@ impl AuthConfig {
 
         let local = LocalAuthConfig::from_env()?;
 
-        if github.is_none() && google.is_none() && local.is_none() {
+        if !password_accounts && github.is_none() && google.is_none() && local.is_none() {
             return Err(ConfigError::NoOAuthProviders);
         }
 
@@ -419,6 +422,7 @@ impl AuthConfig {
             github,
             google,
             local,
+            password_accounts,
             jwt_secret,
             public_base_url,
         })
@@ -434,6 +438,10 @@ impl AuthConfig {
 
     pub fn local(&self) -> Option<&LocalAuthConfig> {
         self.local.as_ref()
+    }
+
+    pub fn password_accounts(&self) -> bool {
+        self.password_accounts
     }
 
     pub fn jwt_secret(&self) -> &SecretString {

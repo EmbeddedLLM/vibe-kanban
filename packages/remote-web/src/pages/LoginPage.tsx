@@ -8,6 +8,7 @@ import {
   type OAuthProvider,
 } from "@remote/shared/lib/api";
 import { storeTokens } from "@remote/shared/lib/auth";
+import { getLoginDestination } from "@remote/shared/lib/loginDestination";
 import { BrandLogo } from "@remote/shared/components/BrandLogo";
 import {
   generateVerifier,
@@ -19,6 +20,7 @@ import { Label } from "@vibe/ui/components/Label";
 
 export default function LoginPage() {
   const { next } = useSearch({ from: "/account" });
+  const destination = getLoginDestination(next);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<OAuthProvider | "local" | null>(null);
   const [email, setEmail] = useState("");
@@ -49,8 +51,8 @@ export default function LoginPage() {
       const appBase =
         import.meta.env.VITE_APP_BASE_URL || window.location.origin;
       const callbackUrl = new URL("/account/complete", appBase);
-      if (next) {
-        callbackUrl.searchParams.set("next", next);
+      if (destination !== "/") {
+        callbackUrl.searchParams.set("next", destination);
       }
       const returnTo = callbackUrl.toString();
 
@@ -72,7 +74,7 @@ export default function LoginPage() {
         password,
       );
       await storeTokens(access_token, refresh_token);
-      window.location.replace(next || "/");
+      window.location.replace(destination);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Local login failed");
       setPending(null);
@@ -108,7 +110,13 @@ export default function LoginPage() {
 
           <section className="space-y-3">
             {!isAuthMethodsError && hasLocalAuth && (
-              <div className="space-y-3 rounded-sm border border-border bg-primary p-base">
+              <form
+                className="space-y-3 rounded-sm border border-border bg-primary p-base"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!pending) void handleLocalLogin();
+                }}
+              >
                 <div className="space-y-2">
                   <Label htmlFor="self-host-email">Email</Label>
                   <Input
@@ -118,6 +126,7 @@ export default function LoginPage() {
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="Email"
                     autoComplete="username"
+                    required
                   />
                 </div>
                 <div className="space-y-2">
@@ -129,17 +138,23 @@ export default function LoginPage() {
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Password"
                     autoComplete="current-password"
+                    required
                   />
                 </div>
                 <button
-                  type="button"
+                  type="submit"
                   className="w-full rounded-sm bg-brand px-base py-half text-sm font-medium text-on-brand transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={() => void handleLocalLogin()}
                   disabled={pending !== null || !email.trim() || !password}
                 >
                   {pending === "local" ? "Signing in..." : "Sign in with email"}
                 </button>
-              </div>
+                {authMethods?.password_accounts && (
+                  <p className="text-xs text-low">
+                    Forgot your password? Ask the server operator for a reset
+                    link.
+                  </p>
+                )}
+              </form>
             )}
 
             {!isAuthMethodsError && hasLocalAuth && hasOAuthProviders && (

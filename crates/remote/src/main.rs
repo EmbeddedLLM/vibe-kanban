@@ -15,6 +15,16 @@ async fn main() -> anyhow::Result<()> {
 
     let config = RemoteServerConfig::from_env()?;
 
+    let mut args = std::env::args().skip(1);
+    if args.next().as_deref() == Some("local-reset-link") {
+        let email = args
+            .next()
+            .filter(|_| args.next().is_none())
+            .ok_or_else(|| anyhow::anyhow!("usage: remote local-reset-link EMAIL"))?;
+        println!("{}", Server::local_reset_link(&config, &email).await?);
+        return Ok(());
+    }
+
     #[cfg(feature = "vk-billing")]
     let billing = {
         use std::sync::Arc;

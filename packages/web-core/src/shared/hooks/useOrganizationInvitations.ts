@@ -24,9 +24,10 @@ export function useOrganizationInvitations(
       }
       const invitations =
         await organizationsApi.listInvitations(organizationId);
-      // Only return pending invitations
       return invitations.filter(
-        (inv) => inv.status === InvitationStatus.PENDING
+        (inv) =>
+          inv.status === InvitationStatus.PENDING ||
+          (inv.password_enrollment && inv.status === InvitationStatus.EXPIRED)
       );
     },
     enabled: !!userId && !!organizationId && isAdmin && !isPersonal,

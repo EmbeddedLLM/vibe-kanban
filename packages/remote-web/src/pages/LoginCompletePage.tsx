@@ -2,19 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { redeemOAuth } from "@remote/shared/lib/api";
 import { storeTokens } from "@remote/shared/lib/auth";
+import { getLoginDestination } from "@remote/shared/lib/loginDestination";
 import { retrieveVerifier, clearVerifier } from "@remote/shared/lib/pkce";
-
-function getSafeNextPath(nextPath: string | undefined): string {
-  if (!nextPath) {
-    return "/";
-  }
-
-  if (!nextPath.startsWith("/") || nextPath.startsWith("//")) {
-    return "/";
-  }
-
-  return nextPath;
-}
 
 export default function LoginCompletePage() {
   const navigate = useNavigate();
@@ -24,7 +13,7 @@ export default function LoginCompletePage() {
   const handoffId = search.handoff_id;
   const appCode = search.app_code;
   const oauthError = search.error;
-  const nextPath = getSafeNextPath(search.next);
+  const nextPath = getLoginDestination(search.next);
 
   useEffect(() => {
     const complete = async () => {

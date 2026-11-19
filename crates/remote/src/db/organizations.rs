@@ -62,22 +62,32 @@ impl<'a> OrganizationRepository<'a> {
         user_id: Uuid,
         display_name_hint: Option<&str>,
     ) -> Result<Organization, IdentityError> {
+        let mut tx = super::begin_tx(self.pool).await?;
+        let org =
+            Self::ensure_personal_org_and_admin_membership_tx(&mut tx, user_id, display_name_hint)
+                .await?;
+        tx.commit().await?;
+        Ok(org)
+    }
+
+    pub(crate) async fn ensure_personal_org_and_admin_membership_tx(
+        tx: &mut super::Tx<'_>,
+        user_id: Uuid,
+        display_name_hint: Option<&str>,
+    ) -> Result<Organization, IdentityError> {
         let name = personal_org_name(display_name_hint, user_id);
         let slug = personal_org_slug(user_id);
 
         // Try to find existing personal org by slug
-        let existing_org = find_organization_by_slug(self.pool, &slug).await?;
+        let existing_org = find_organization_by_slug(&mut **tx, &slug).await?;
 
         let org = match existing_org {
             Some(org) => org,
             None => {
-                // Create new personal org WITH initial project in a transaction
-                let mut tx = super::begin_tx(self.pool).await?;
-
-                let org = create_personal_org_tx(&mut *tx, &name, &slug).await?;
+                let org = create_personal_org_tx(&mut **tx, &name, &slug).await?;
 
                 // Create initial project with default tags and statuses
-                ProjectRepository::create_initial_project_tx(&mut tx, org.id)
+                ProjectRepository::create_initial_project_tx(tx, org.id)
                     .await
                     .map_err(|e| {
                         IdentityError::Database(sqlx::Error::Protocol(format!(
@@ -85,12 +95,11 @@ impl<'a> OrganizationRepository<'a> {
                         )))
                     })?;
 
-                tx.commit().await?;
                 org
             }
         };
 
-        add_member(self.pool, org.id, user_id, MemberRole::Admin).await?;
+        add_member(&mut **tx, org.id, user_id, MemberRole::Admin).await?;
         Ok(org)
     }
 
@@ -297,10 +306,13 @@ where
     result.ok_or(IdentityError::NotFound)
 }
 
-async fn find_organization_by_slug(
-    pool: &PgPool,
+async fn find_organization_by_slug<'e, E>(
+    executor: E,
     slug: &str,
-) -> Result<Option<Organization>, sqlx::Error> {
+) -> Result<Option<Organization>, sqlx::Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
     query_as!(
         Organization,
         r#"
@@ -317,7 +329,7 @@ async fn find_organization_by_slug(
         "#,
         slug
     )
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await
 }
 

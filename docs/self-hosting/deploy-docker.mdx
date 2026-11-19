@@ -87,15 +87,18 @@ DOMAIN=your-domain.com
 # Relay API base URL (required if you enable relay/tunnel)
 VITE_RELAY_API_BASE_URL=https://relay.your-domain.com
 
-# Authentication — configure at least one provider, or set bootstrap local auth credentials.
-GITHUB_OAUTH_CLIENT_ID=your_github_client_id
-GITHUB_OAUTH_CLIENT_SECRET=your_github_client_secret
+# Invite-only email and password accounts on a fresh database
+SELF_HOST_PASSWORD_ACCOUNTS=true
+SELF_HOST_LOCAL_AUTH_EMAIL=admin@example.com
+SELF_HOST_LOCAL_AUTH_PASSWORD=<password_with_at_least_15_characters>
+
+# OAuth providers for deployments that disable password accounts
+GITHUB_OAUTH_CLIENT_ID=
+GITHUB_OAUTH_CLIENT_SECRET=
 GOOGLE_OAUTH_CLIENT_ID=
 GOOGLE_OAUTH_CLIENT_SECRET=
-SELF_HOST_LOCAL_AUTH_EMAIL=
-SELF_HOST_LOCAL_AUTH_PASSWORD=
 
-# Email (optional — leave empty to disable invitation emails)
+# Email notifications (optional)
 LOOPS_EMAIL_API_KEY=
 
 # Loops transactional email template IDs (optional — defaults are the upstream templates).
@@ -198,6 +201,7 @@ services:
       LOOPS_INVITE_TEMPLATE_ID: ${LOOPS_INVITE_TEMPLATE_ID:-cmhvy2wgs3s13z70i1pxakij9}
       LOOPS_REVIEW_READY_TEMPLATE_ID: ${LOOPS_REVIEW_READY_TEMPLATE_ID:-cmj47k5ge16990iylued9by17}
       LOOPS_REVIEW_FAILED_TEMPLATE_ID: ${LOOPS_REVIEW_FAILED_TEMPLATE_ID:-cmj49ougk1c8s0iznavijdqpo}
+      SELF_HOST_PASSWORD_ACCOUNTS: ${SELF_HOST_PASSWORD_ACCOUNTS:-false}
       SELF_HOST_LOCAL_AUTH_EMAIL: ${SELF_HOST_LOCAL_AUTH_EMAIL:-}
       SELF_HOST_LOCAL_AUTH_PASSWORD: ${SELF_HOST_LOCAL_AUTH_PASSWORD:-}
       AZURE_STORAGE_ACCOUNT_NAME:
@@ -255,6 +259,28 @@ The first build takes 10-15 minutes. Subsequent deployments are faster as Docker
 2. You should see the Vibe Kanban Cloud login page
 3. Sign in with your configured auth method
 4. Create your first organisation and project
+
+### Invite teammates with password accounts
+
+With `SELF_HOST_PASSWORD_ACCOUNTS=true`, the first startup creates the operator account from `SELF_HOST_LOCAL_AUTH_EMAIL` and `SELF_HOST_LOCAL_AUTH_PASSWORD`. Once you can sign in, remove both initial credential variables and recreate the container. Keep the PostgreSQL volume and `VIBEKANBAN_REMOTE_JWT_SECRET` across updates. GitHub and Google sign-in are absent in this mode.
+
+1. In a team organisation, open **Settings → Organisations → Members** and select **Invite member**.
+2. Enter an email for a new account, choose their role, and select **Create invitation**. Copy the link and share it privately. Password-account invitations are delivered manually.
+3. Your teammate opens the link, checks the email and organisation, and chooses a display name and password. They can then sign in with that email and password.
+4. Under **Pending invitations**, you can copy a valid link again, revoke it, or replace it. Links expire after seven days and can be used once.
+
+Each member can create a project-scoped key under **Settings → MCP Access** for a client that supports Streamable HTTP with a bearer token. Copy the key when it appears and keep it in the client’s secret store. Kanban changes made with the key are attributed to its owner.
+
+### Recover a password account
+
+Members can change a known password from the account menu. If they lose it, the server operator can issue a reset link using Docker access:
+
+```bash
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml \
+  exec -T remote-server /usr/local/bin/remote local-reset-link teammate@example.com
+```
+
+Share the link privately. It expires in 30 minutes. Redeeming it signs the member out on all devices and revokes their MCP keys. A routine password change signs the member out and preserves their MCP keys.
 
 ## Optional: Enable Relay/Tunnel in Production
 

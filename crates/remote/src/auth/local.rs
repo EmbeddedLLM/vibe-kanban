@@ -30,7 +30,8 @@ pub(crate) enum LocalAuthError {
 
 pub(crate) fn auth_methods_response(state: &AppState) -> AuthMethodsResponse {
     AuthMethodsResponse {
-        local_auth_enabled: state.config().auth.local().is_some(),
+        local_auth_enabled: state.config().auth.password_accounts()
+            || state.config().auth.local().is_some(),
         oauth_providers: state.providers().names(),
     }
 }

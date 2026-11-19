@@ -1,6 +1,6 @@
 pub use api_types::AuthSession;
 use chrono::Duration;
-use sqlx::{PgPool, query_as};
+use sqlx::{PgExecutor, PgPool, query_as};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -36,6 +36,14 @@ impl<'a> AuthSessionRepository<'a> {
         user_id: Uuid,
         refresh_token_id: Option<Uuid>,
     ) -> Result<AuthSession, AuthSessionError> {
+        Self::create_on(self.pool, user_id, refresh_token_id).await
+    }
+
+    pub(crate) async fn create_on<'e>(
+        executor: impl PgExecutor<'e>,
+        user_id: Uuid,
+        refresh_token_id: Option<Uuid>,
+    ) -> Result<AuthSession, AuthSessionError> {
         query_as!(
             AuthSession,
             r#"
@@ -55,7 +63,7 @@ impl<'a> AuthSessionRepository<'a> {
             user_id,
             refresh_token_id
         )
-        .fetch_one(self.pool)
+        .fetch_one(executor)
         .await
         .map_err(AuthSessionError::from)
     }
@@ -113,7 +121,7 @@ impl<'a> AuthSessionRepository<'a> {
             .await
             .map_err(AuthSessionError::from)?;
 
-        let updated = sqlx::query!(
+        let updated = sqlx::query_scalar::<_, Uuid>(
             r#"
             UPDATE auth_sessions
             SET refresh_token_id = $3,
@@ -122,18 +130,19 @@ impl<'a> AuthSessionRepository<'a> {
                 previous_refresh_token_grace_expires_at = NOW() + make_interval(secs => $4)
             WHERE id = $1
               AND refresh_token_id = $2
+              AND revoked_at IS NULL
             RETURNING user_id
             "#,
-            session_id,
-            old_refresh_token_id,
-            new_refresh_token_id,
-            overlap_secs as f64
         )
+        .bind(session_id)
+        .bind(old_refresh_token_id)
+        .bind(new_refresh_token_id)
+        .bind(overlap_secs as f64)
         .fetch_optional(&mut *tx)
         .await
         .map_err(AuthSessionError::from)?;
 
-        let Some(row) = updated else {
+        let Some(user_id) = updated else {
             tx.rollback().await.map_err(AuthSessionError::from)?;
             return Err(AuthSessionError::TokenReuseDetected);
         };
@@ -146,7 +155,7 @@ impl<'a> AuthSessionRepository<'a> {
             ON CONFLICT (token_id) DO NOTHING
             "#,
             old_refresh_token_id,
-            row.user_id
+            user_id
         )
         .execute(&mut *tx)
         .await
@@ -158,6 +167,14 @@ impl<'a> AuthSessionRepository<'a> {
 
     pub async fn set_current_refresh_token(
         &self,
+        session_id: Uuid,
+        refresh_token_id: Uuid,
+    ) -> Result<(), AuthSessionError> {
+        Self::set_current_refresh_token_on(self.pool, session_id, refresh_token_id).await
+    }
+
+    pub(crate) async fn set_current_refresh_token_on<'e>(
+        executor: impl PgExecutor<'e>,
         session_id: Uuid,
         refresh_token_id: Uuid,
     ) -> Result<(), AuthSessionError> {
@@ -173,7 +190,7 @@ impl<'a> AuthSessionRepository<'a> {
             session_id,
             refresh_token_id
         )
-        .execute(self.pool)
+        .execute(executor)
         .await?;
         Ok(())
     }

@@ -102,13 +102,14 @@ services:
       SERVER_PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
       VIBEKANBAN_REMOTE_JWT_SECRET: ${VIBEKANBAN_REMOTE_JWT_SECRET:?set in .env.remote}
 
-      # Auth 
-      # Configure at least one OAuth provider, or set self-host local auth credentials.
+      # Auth
+      # Enable password accounts on a fresh database, or configure OAuth.
+      SELF_HOST_PASSWORD_ACCOUNTS: ${SELF_HOST_PASSWORD_ACCOUNTS:-false}
       GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
       GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
-      # Self-hosted local auth 
+      # Initial operator credentials when password accounts are enabled.
       SELF_HOST_LOCAL_AUTH_EMAIL: ${SELF_HOST_LOCAL_AUTH_EMAIL:-}
       SELF_HOST_LOCAL_AUTH_PASSWORD: ${SELF_HOST_LOCAL_AUTH_PASSWORD:-}
 

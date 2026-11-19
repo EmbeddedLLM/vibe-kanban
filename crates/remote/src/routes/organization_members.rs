@@ -5,7 +5,7 @@ use api_types::{
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{StatusCode, header},
     response::IntoResponse,
     routing::{delete, get, patch, post},
 };
@@ -19,7 +19,7 @@ use super::error::{ErrorResponse, membership_error};
 use crate::{
     AppState,
     audit::{self, AuditAction, AuditEvent},
-    auth::RequestContext,
+    auth::{RequestContext, passwords},
     db::{
         identity_errors::IdentityError,
         invitations::{Invitation, InvitationRepository},
@@ -46,6 +46,10 @@ pub(super) fn protected_router() -> Router<AppState> {
             "/organizations/{org_id}/invitations/revoke",
             post(revoke_invitation),
         )
+        .route(
+            "/organizations/{org_id}/invitations/{invitation_id}/replace",
+            post(replace_invitation),
+        )
         .route("/invitations/{token}/accept", post(accept_invitation))
         .route("/organizations/{org_id}/members", get(list_members))
         .route(
@@ -68,19 +72,39 @@ struct CreateInvitationRequest {
 struct ShareableInvitation {
     #[serde(flatten)]
     invitation: Invitation,
-    accept_url: String,
+    accept_url: Option<String>,
+    password_enrollment: bool,
 }
 
 impl ShareableInvitation {
-    fn new(invitation: Invitation, base_url: &str) -> Self {
-        let accept_url = format!(
-            "{}/invitations/{}/accept",
-            base_url.trim_end_matches('/'),
-            invitation.token
-        );
+    fn new(state: &AppState, invitation: Invitation) -> Self {
+        use crate::db::invitations::InvitationStatus;
+
+        let password_enrollment = passwords::is_password_invite(&invitation.token);
+        let local_mode = state.config().auth.password_accounts();
+        let accept_url = if password_enrollment != local_mode
+            || invitation.status != InvitationStatus::Pending
+            || invitation.expires_at <= Utc::now()
+        {
+            None
+        } else if password_enrollment {
+            Some(passwords::invitation_url(
+                &state.config().auth,
+                &state.server_public_base_url,
+                invitation.id,
+                &invitation.token,
+            ))
+        } else {
+            Some(format!(
+                "{}/invitations/{}/accept",
+                state.server_public_base_url.trim_end_matches('/'),
+                invitation.token
+            ))
+        };
         Self {
             invitation,
             accept_url,
+            password_enrollment,
         }
     }
 }
@@ -125,18 +149,31 @@ async fn create_invitation(
 
     ensure_admin_access(&state.pool, org_id, user.id).await?;
 
-    let token = Uuid::new_v4().to_string();
+    let local_mode = state.config().auth.password_accounts();
+    let (token, email) = if local_mode {
+        let email = passwords::normalize_email(&payload.email)?;
+        if crate::db::users::UserRepository::new(state.pool())
+            .fetch_user_by_email(&email)
+            .await
+            .map_err(|e| super::error::db_error(e, "Could not check invited email"))?
+            .is_some()
+        {
+            return Err(ErrorResponse::new(
+                StatusCode::CONFLICT,
+                "An account already exists for this email",
+            ));
+        }
+        sqlx::query("UPDATE organization_invitations SET status = 'expired' WHERE organization_id = $1 AND lower(email) = $2 AND status = 'pending' AND expires_at <= now()")
+            .bind(org_id).bind(&email).execute(state.pool()).await
+            .map_err(|e| super::error::db_error(e, "Could not check existing invitations"))?;
+        (passwords::invitation_nonce(), email)
+    } else {
+        (Uuid::new_v4().to_string(), payload.email)
+    };
     let expires_at = Utc::now() + Duration::days(7);
 
     let invitation = invitation_repo
-        .create_invitation(
-            org_id,
-            user.id,
-            &payload.email,
-            payload.role,
-            expires_at,
-            &token,
-        )
+        .create_invitation(org_id, user.id, &email, payload.role, expires_at, &token)
         .await
         .map_err(|e| match e {
             IdentityError::PermissionDenied => {
@@ -146,24 +183,25 @@ async fn create_invitation(
             _ => ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "Database error"),
         })?;
 
-    let organization = org_repo.fetch_organization(org_id).await.map_err(|_| {
-        ErrorResponse::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to fetch organization",
-        )
-    })?;
-
-    let shareable = ShareableInvitation::new(invitation, &state.server_public_base_url);
-    state
-        .mailer
-        .send_org_invitation(
-            &organization.name,
-            &payload.email,
-            &shareable.accept_url,
-            payload.role,
-            user.username.as_deref(),
-        )
-        .await;
+    let shareable = ShareableInvitation::new(&state, invitation);
+    if !local_mode && let Some(accept_url) = &shareable.accept_url {
+        let organization = org_repo.fetch_organization(org_id).await.map_err(|_| {
+            ErrorResponse::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to fetch organization",
+            )
+        })?;
+        state
+            .mailer
+            .send_org_invitation(
+                &organization.name,
+                &email,
+                accept_url,
+                payload.role,
+                user.username.as_deref(),
+            )
+            .await;
+    }
 
     audit::emit(
         AuditEvent::system(AuditAction::MemberInvite)
@@ -192,6 +230,7 @@ async fn create_invitation(
 
     Ok((
         StatusCode::CREATED,
+        [(header::CACHE_CONTROL, "no-store")],
         Json(CreateInvitationResponse {
             invitation: shareable,
         }),
@@ -221,15 +260,49 @@ async fn list_invitations(
 
     let invitations = invitations
         .into_iter()
-        .map(|invitation| ShareableInvitation::new(invitation, &state.server_public_base_url))
+        .map(|invitation| ShareableInvitation::new(&state, invitation))
         .collect();
-    Ok(Json(ListInvitationsResponse { invitations }))
+    Ok((
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(ListInvitationsResponse { invitations }),
+    ))
+}
+
+async fn replace_invitation(
+    State(state): State<AppState>,
+    axum::extract::Extension(ctx): axum::extract::Extension<RequestContext>,
+    Path((org_id, invitation_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ErrorResponse> {
+    passwords::ensure_enabled(&state.config().auth)?;
+    ensure_admin_access(state.pool(), org_id, ctx.user.id).await?;
+    let invitation = sqlx::query_as::<_, Invitation>(
+        "UPDATE organization_invitations SET token = $3, status = 'pending', expires_at = now() + interval '7 days'
+         WHERE id = $1 AND organization_id = $2 AND status IN ('pending', 'expired')
+         AND EXISTS (SELECT 1 FROM organizations WHERE id = $2 AND NOT is_personal)
+         AND NOT EXISTS (SELECT 1 FROM users WHERE lower(users.email) = lower(organization_invitations.email))
+         RETURNING id, organization_id, invited_by_user_id, email, role, status, token, expires_at, created_at, updated_at",
+    ).bind(invitation_id).bind(org_id).bind(passwords::invitation_nonce()).fetch_optional(state.pool()).await
+        .map_err(|e| super::error::db_error(e, "Could not replace invitation"))?
+        .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "No invitation available to replace"))?;
+    tracing::info!(target: "audit", user_id = %ctx.user.id, %org_id, %invitation_id, "password invitation replaced");
+    Ok((
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(CreateInvitationResponse {
+            invitation: ShareableInvitation::new(&state, invitation),
+        }),
+    ))
 }
 
 async fn get_invitation(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> Result<impl IntoResponse, ErrorResponse> {
+    if state.config().auth.password_accounts() || Uuid::parse_str(&token).is_err() {
+        return Err(ErrorResponse::new(
+            StatusCode::NOT_FOUND,
+            "Invitation not found",
+        ));
+    }
     let invitation_repo = InvitationRepository::new(&state.pool);
 
     let invitation = invitation_repo
@@ -300,6 +373,12 @@ async fn accept_invitation(
     axum::extract::Extension(ctx): axum::extract::Extension<RequestContext>,
     Path(token): Path<String>,
 ) -> Result<impl IntoResponse, ErrorResponse> {
+    if state.config().auth.password_accounts() || Uuid::parse_str(&token).is_err() {
+        return Err(ErrorResponse::new(
+            StatusCode::NOT_FOUND,
+            "Invitation not found",
+        ));
+    }
     let session_id = ctx.session_id;
 
     let user = ctx.user;
@@ -321,7 +400,7 @@ async fn accept_invitation(
             .user(user.id, Some(session_id))
             .resource("organization_member", None)
             .organization(org.id)
-            .http("POST", format!("/v1/invitations/{token}/accept"), 200)
+            .http("POST", "/v1/invitations/{token}/accept", 200)
             .description(format!("Accepted invitation with role {role:?}")),
     );
 

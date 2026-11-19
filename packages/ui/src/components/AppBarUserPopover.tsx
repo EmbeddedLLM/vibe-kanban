@@ -2,6 +2,7 @@ import {
   BuildingsIcon,
   CheckIcon,
   GearIcon,
+  LockKeyIcon,
   SignInIcon,
   SignOutIcon,
   UserIcon,
@@ -33,6 +34,7 @@ interface AppBarUserPopoverProps {
   onOrgSelect: (orgId: string) => void;
   onOrgSettings?: (orgId: string) => void;
   onSettings?: () => void;
+  onChangePassword?: () => void;
   onSignIn: () => void;
   onLogout: () => void;
   onAvatarError: () => void;
@@ -49,6 +51,7 @@ export function AppBarUserPopover({
   onOrgSelect,
   onOrgSettings,
   onSettings,
+  onChangePassword,
   onSignIn,
   onLogout,
   onAvatarError,
@@ -156,6 +159,11 @@ export function AppBarUserPopover({
               {settingsLabel}
             </DropdownMenuItem>
           </>
+        )}
+        {onChangePassword && (
+          <DropdownMenuItem icon={LockKeyIcon} onClick={onChangePassword}>
+            {t('changePassword', { defaultValue: 'Change password' })}
+          </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem icon={SignOutIcon} onClick={onLogout}>

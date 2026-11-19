@@ -45,6 +45,9 @@
     "expired": "Expired",
     "link": "Invitation link",
     "copyLink": "Copy invite link",
+    "replaceLink": "Replace link",
+    "confirmReplace": "Create a new invitation link? The previous link will stop working.",
+    "replaced": "Invite link replaced. Copy the new link below.",
     "revoke": "Revoke invitation"
   },
   "settings": {

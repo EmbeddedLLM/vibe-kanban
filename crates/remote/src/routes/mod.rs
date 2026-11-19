@@ -45,6 +45,7 @@ pub mod notifications;
 mod oauth;
 pub(crate) mod organization_members;
 mod organizations;
+mod password_accounts;
 pub mod project_statuses;
 pub mod projects;
 pub mod pull_request_issues;
@@ -105,6 +106,7 @@ pub fn router(state: AppState) -> Router {
     let v1_public = Router::<AppState>::new()
         .route("/health", get(health))
         .merge(oauth::public_router())
+        .merge(password_accounts::public_router())
         .merge(organization_members::public_router())
         .merge(tokens::public_router())
         .merge(review::public_router())
@@ -118,6 +120,7 @@ pub fn router(state: AppState) -> Router {
         .merge(organizations::router())
         .merge(organization_members::protected_router())
         .merge(oauth::protected_router())
+        .merge(password_accounts::protected_router())
         .merge(electric_proxy::router())
         .merge(github_app::protected_router())
         .merge(project_statuses::router())

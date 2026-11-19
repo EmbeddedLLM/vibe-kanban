@@ -120,6 +120,20 @@ export function useOrganizationMutations(
     },
   });
 
+  const replaceInvitation = useMutation({
+    mutationFn: ({
+      orgId,
+      invitationId,
+    }: {
+      orgId: string;
+      invitationId: string;
+    }) => organizationsApi.replaceInvitation(orgId, invitationId),
+    onSuccess: (_data, { orgId }) =>
+      queryClient.invalidateQueries({
+        queryKey: organizationKeys.invitations(orgId),
+      }),
+  });
+
   const updateMemberRole = useMutation<
     UpdateMemberRoleResponse,
     unknown,
@@ -168,6 +182,7 @@ export function useOrganizationMutations(
   return {
     createOrganization,
     createInvitation,
+    replaceInvitation,
     revokeInvitation,
     removeMember,
     updateMemberRole,

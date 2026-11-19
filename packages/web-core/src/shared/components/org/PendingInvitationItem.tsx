@@ -11,12 +11,16 @@ interface PendingInvitationItemProps {
   invitation: ShareableInvitation;
   onRevoke?: (invitationId: string) => void;
   isRevoking?: boolean;
+  onReplace?: (invitationId: string) => void;
+  isReplacing?: boolean;
 }
 
 export function PendingInvitationItem({
   invitation,
   onRevoke,
   isRevoking,
+  onReplace,
+  isReplacing,
 }: PendingInvitationItemProps) {
   const { t } = useTranslation('organization');
   const expiresAt = new Date(invitation.expires_at);
@@ -79,6 +83,20 @@ export function PendingInvitationItem({
           value={inviteLink}
           copyLabel={t('invitationList.copyLink')}
         />
+      )}
+      {invitation.password_enrollment && onReplace && (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isReplacing || isRevoking}
+          onClick={() => {
+            if (window.confirm(t('invitationList.confirmReplace'))) {
+              onReplace(invitation.id);
+            }
+          }}
+        >
+          {t('invitationList.replaceLink')}
+        </Button>
       )}
     </div>
   );

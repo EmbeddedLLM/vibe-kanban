@@ -104,6 +104,7 @@ export function OrganizationsSettingsSection() {
     removeMember,
     updateMemberRole,
     revokeInvitation,
+    replaceInvitation,
     deleteOrganization,
   } = useOrganizationMutations({
     onRevokeSuccess: () => {
@@ -185,6 +186,19 @@ export function OrganizationsSettingsSection() {
     if (!selectedOrgId) return;
     setError(null);
     revokeInvitation.mutate({ orgId: selectedOrgId, invitationId });
+  };
+
+  const handleReplaceInvitation = (invitationId: string) => {
+    if (!selectedOrgId) return;
+    setError(null);
+    setSuccess(null);
+    replaceInvitation.mutate(
+      { orgId: selectedOrgId, invitationId },
+      {
+        onSuccess: () => setSuccess(t('invitationList.replaced')),
+        onError: (err) => setError(err.message),
+      }
+    );
   };
 
   const handleRemoveMember = async (userId: string) => {
@@ -390,6 +404,8 @@ export function OrganizationsSettingsSection() {
                     invitation={invitation}
                     onRevoke={handleRevokeInvitation}
                     isRevoking={revokeInvitation.isPending}
+                    onReplace={handleReplaceInvitation}
+                    isReplacing={replaceInvitation.isPending}
                   />
                 ))}
               </div>
