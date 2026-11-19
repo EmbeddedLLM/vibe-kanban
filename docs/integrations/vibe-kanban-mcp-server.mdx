@@ -3,15 +3,11 @@ title: "Vibe Kanban MCP Server"
 description: "Configure the Vibe Kanban MCP server"
 ---
 
-Vibe Kanban exposes a local MCP (Model Context Protocol) server, allowing you to manage organisations, projects, issues, workspaces, and repositories from external MCP clients like Claude Desktop, Raycast, or even coding agents running within Vibe Kanban itself.
+Vibe Kanban exposes MCP (Model Context Protocol) tools for external clients. The local stdio server provides access to your local workspaces and repositories. A self-hosted remote server provides a Streamable HTTP endpoint for coordinating issues on the shared board.
 
 <Note>
 This page covers connecting **external MCP clients** to Vibe Kanban's MCP server. For configuring MCP servers **within** Vibe Kanban for your coding agents, see the [MCP Server Configuration](/integrations/mcp-server-configuration) guide.
 </Note>
-
-<Info>
-Vibe Kanban's MCP server is **local-only** - it runs on your computer and can only be accessed by applications installed locally. It cannot be accessed via publicly accessible URLs.
-</Info>
 
 <video
   controls
@@ -19,7 +15,17 @@ Vibe Kanban's MCP server is **local-only** - it runs on your computer and can on
   src="https://vkcdn.britannio.dev/vk-mcp-server.mp4"
 ></video>
 
-## Setting Up MCP Integration
+## Connect to a self-hosted board
+
+Use the `/mcp` endpoint on your [self-hosted Vibe Kanban server](/self-hosting/deploy-docker). Use HTTPS for a public endpoint.
+
+1. With your Vibe Kanban session access token, send `POST /v1/mcp_credentials` with a JSON body containing `name` and `project_id`. Give each harness a distinct name. The response includes the bearer `token`, which the server displays once and expires after 30 days.
+2. Store the MCP token in your harness's secret store. Configure a Streamable HTTP server with the `/mcp` URL and an `Authorization: Bearer` header containing that token. In Codex CLI, use `codex mcp add vibe_kanban --url https://kanban.example.com/mcp --bearer-token-env-var VIBE_KANBAN_MCP_TOKEN` and start Codex with `VIBE_KANBAN_MCP_TOKEN` set.
+3. Call `get_identity` to confirm the member and project IDs. The other tools list statuses, search issues, create and move issues, add assignees, and post comments.
+
+Each credential authorises one team member's harness for one project. Comments show the member as the author, and server audit logs include the member ID and the credential name for changes. To see your credential IDs, use `GET /v1/mcp_credentials` with your app session access token. To revoke a credential, use `DELETE /v1/mcp_credentials/{id}`. Removing a member from an organisation revokes their credentials for its projects.
+
+## Connect to the local stdio server
 
 ### Option 1: Using the Web Interface
 
@@ -52,7 +58,7 @@ Add the following configuration to your agent's MCP servers configuration:
 
 `--mcp` launches the local MCP stdio server. Any additional arguments after `--mcp` are passed through to the `vibe-kanban-mcp` binary.
 
-## Available MCP Tools
+## Local MCP tools
 
 The Vibe Kanban MCP server provides tools for managing organisations, projects, issues, workspaces, and task execution.
 

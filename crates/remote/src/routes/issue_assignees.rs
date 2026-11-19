@@ -96,7 +96,17 @@ async fn create_issue_assignee(
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<CreateIssueAssigneeRequest>,
 ) -> Result<Json<MutationResponse<IssueAssignee>>, ErrorResponse> {
-    let organization_id = ensure_issue_access(state.pool(), ctx.user.id, payload.issue_id).await?;
+    create_issue_assignee_for_user(&state, ctx.user.id, payload)
+        .await
+        .map(Json)
+}
+
+pub(super) async fn create_issue_assignee_for_user(
+    state: &AppState,
+    user_id: Uuid,
+    payload: CreateIssueAssigneeRequest,
+) -> Result<MutationResponse<IssueAssignee>, ErrorResponse> {
+    let organization_id = ensure_issue_access(state.pool(), user_id, payload.issue_id).await?;
 
     let response = IssueAssigneeRepository::create(
         state.pool(),
@@ -110,13 +120,13 @@ async fn create_issue_assignee(
         db_error(error, "failed to create issue assignee")
     })?;
 
-    if payload.user_id != ctx.user.id
+    if payload.user_id != user_id
         && let Ok(Some(issue)) = IssueRepository::find_by_id(state.pool(), payload.issue_id).await
     {
         notify_user(
             state.pool(),
             organization_id,
-            ctx.user.id,
+            user_id,
             payload.user_id,
             &issue,
             NotificationType::IssueAssigneeChanged,
@@ -128,7 +138,7 @@ async fn create_issue_assignee(
         .await;
     }
 
-    Ok(Json(response))
+    Ok(response)
 }
 
 #[instrument(

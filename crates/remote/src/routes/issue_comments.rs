@@ -102,7 +102,17 @@ async fn create_issue_comment(
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<CreateIssueCommentRequest>,
 ) -> Result<Json<MutationResponse<IssueComment>>, ErrorResponse> {
-    let organization_id = ensure_issue_access(state.pool(), ctx.user.id, payload.issue_id).await?;
+    create_issue_comment_for_user(&state, ctx.user.id, payload)
+        .await
+        .map(Json)
+}
+
+pub(super) async fn create_issue_comment_for_user(
+    state: &AppState,
+    user_id: Uuid,
+    payload: CreateIssueCommentRequest,
+) -> Result<MutationResponse<IssueComment>, ErrorResponse> {
+    let organization_id = ensure_issue_access(state.pool(), user_id, payload.issue_id).await?;
 
     let is_reply = payload.parent_id.is_some();
 
@@ -110,7 +120,7 @@ async fn create_issue_comment(
         state.pool(),
         payload.id,
         payload.issue_id,
-        ctx.user.id,
+        user_id,
         payload.parent_id,
         payload.message,
     )
@@ -122,7 +132,7 @@ async fn create_issue_comment(
 
     if let Some(analytics) = state.analytics() {
         analytics.track(
-            ctx.user.id,
+            user_id,
             "issue_comment_created",
             serde_json::json!({
                 "comment_id": response.data.id,
@@ -139,7 +149,7 @@ async fn create_issue_comment(
         notify_issue_subscribers(
             state.pool(),
             organization_id,
-            ctx.user.id,
+            user_id,
             &issue,
             NotificationType::IssueCommentAdded,
             NotificationPayload {
@@ -151,7 +161,7 @@ async fn create_issue_comment(
         .await;
     }
 
-    Ok(Json(response))
+    Ok(response)
 }
 
 #[instrument(

@@ -177,6 +177,7 @@ services:
       dockerfile: crates/remote/Dockerfile
       args:
         VITE_RELAY_API_BASE_URL: ${VITE_RELAY_API_BASE_URL:-}
+        VITE_SELF_HOSTED_BOARD: "true"
     restart: unless-stopped
     depends_on:
       remote-db:

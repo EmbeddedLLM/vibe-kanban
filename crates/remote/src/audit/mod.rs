@@ -15,6 +15,11 @@ pub enum AuditAction {
     MemberRevokeInvite,
     MemberRemove,
     MemberRoleChange,
+
+    McpIssueCreated,
+    McpIssueMoved,
+    McpIssueAssigned,
+    McpCommentAdded,
 }
 
 impl AuditAction {
@@ -30,6 +35,10 @@ impl AuditAction {
             Self::MemberRevokeInvite => "member.revoke_invite",
             Self::MemberRemove => "member.remove",
             Self::MemberRoleChange => "member.role_change",
+            Self::McpIssueCreated => "mcp.issue_created",
+            Self::McpIssueMoved => "mcp.issue_moved",
+            Self::McpIssueAssigned => "mcp.issue_assigned",
+            Self::McpCommentAdded => "mcp.comment_added",
         }
     }
 }
@@ -40,6 +49,8 @@ pub struct AuditEvent {
     pub action: AuditAction,
     pub user_id: Option<Uuid>,
     pub session_id: Option<Uuid>,
+    pub mcp_credential_id: Option<Uuid>,
+    pub mcp_credential_name: Option<String>,
     pub resource_type: Option<&'static str>,
     pub resource_id: Option<Uuid>,
     pub organization_id: Option<Uuid>,
@@ -56,6 +67,8 @@ impl AuditEvent {
             action,
             user_id: Some(ctx.user.id),
             session_id: Some(ctx.session_id),
+            mcp_credential_id: None,
+            mcp_credential_name: None,
             resource_type: None,
             resource_id: None,
             organization_id: None,
@@ -72,6 +85,8 @@ impl AuditEvent {
             action,
             user_id: None,
             session_id: None,
+            mcp_credential_id: None,
+            mcp_credential_name: None,
             resource_type: None,
             resource_id: None,
             organization_id: None,
@@ -110,6 +125,12 @@ impl AuditEvent {
         self.session_id = session_id;
         self
     }
+
+    pub fn mcp_credential(mut self, id: Uuid, name: String) -> Self {
+        self.mcp_credential_id = Some(id);
+        self.mcp_credential_name = Some(name);
+        self
+    }
 }
 
 /// Emit an audit event as a structured tracing log.
@@ -120,6 +141,8 @@ pub fn emit(event: AuditEvent) {
         audit_action = event.action.as_str(),
         audit_user_id = event.user_id.map(|u| u.to_string()).unwrap_or_default(),
         audit_session_id = event.session_id.map(|s| s.to_string()).unwrap_or_default(),
+        audit_mcp_credential_id = event.mcp_credential_id.map(|id| id.to_string()).unwrap_or_default(),
+        audit_mcp_credential_name = event.mcp_credential_name.as_deref().unwrap_or(""),
         audit_resource_type = event.resource_type.unwrap_or(""),
         audit_resource_id = event.resource_id.map(|r| r.to_string()).unwrap_or_default(),
         audit_organization_id = event.organization_id.map(|o| o.to_string()).unwrap_or_default(),

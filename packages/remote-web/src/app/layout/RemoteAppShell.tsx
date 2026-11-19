@@ -60,7 +60,8 @@ export function RemoteAppShell({ children }: RemoteAppShellProps) {
   const isProjectRoute = /^\/projects\/[^/]+/.test(location.pathname);
   const isExportRoute = location.pathname === "/export";
   const showCloudShutdownBanner =
-    isExportRoute || (isSignedIn && isProjectRoute);
+    import.meta.env.VITE_SELF_HOSTED_BOARD !== "true" &&
+    (isExportRoute || (isSignedIn && isProjectRoute));
 
   useCommandBarShortcut(
     () => CommandBarDialog.show(),

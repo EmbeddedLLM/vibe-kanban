@@ -39,6 +39,8 @@ pub mod issue_followers;
 pub mod issue_relationships;
 pub mod issue_tags;
 pub mod issues;
+mod mcp;
+mod mcp_credentials;
 pub mod notifications;
 mod oauth;
 pub(crate) mod organization_members;
@@ -124,6 +126,7 @@ pub fn router(state: AppState) -> Router {
         .merge(issue_comment_reactions::router())
         .merge(issues::router())
         .merge(issue_assignees::router())
+        .merge(mcp_credentials::router())
         .merge(attachments::router())
         .merge(issue_followers::router())
         .merge(issue_tags::router())
@@ -144,6 +147,7 @@ pub fn router(state: AppState) -> Router {
         ServeDir::new(static_dir).fallback(ServeFile::new(format!("{static_dir}/index.html")));
 
     Router::<AppState>::new()
+        .merge(mcp::router(&state))
         .nest("/v1", v1_public)
         .nest("/v1", v1_protected)
         .fallback_service(spa)

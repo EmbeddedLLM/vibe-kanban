@@ -76,7 +76,7 @@ pub struct CreateIssueRequest {
     pub extension_metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 pub struct UpdateIssueRequest {
     #[serde(
         default,

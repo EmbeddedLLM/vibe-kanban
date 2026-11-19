@@ -266,8 +266,17 @@ async fn create_issue(
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<CreateIssueRequest>,
 ) -> Result<Json<MutationResponse<Issue>>, ErrorResponse> {
-    let organization_id =
-        ensure_project_access(state.pool(), ctx.user.id, payload.project_id).await?;
+    create_issue_for_user(&state, ctx.user.id, payload)
+        .await
+        .map(Json)
+}
+
+pub(super) async fn create_issue_for_user(
+    state: &AppState,
+    user_id: Uuid,
+    payload: CreateIssueRequest,
+) -> Result<MutationResponse<Issue>, ErrorResponse> {
+    let organization_id = ensure_project_access(state.pool(), user_id, payload.project_id).await?;
 
     let has_parent = payload.parent_issue_id.is_some();
     let has_description = payload.description.is_some();
@@ -289,7 +298,7 @@ async fn create_issue(
         payload.parent_issue_id,
         payload.parent_issue_sort_order,
         payload.extension_metadata,
-        ctx.user.id,
+        user_id,
     )
     .await
     .map_err(|error| {
@@ -299,14 +308,14 @@ async fn create_issue(
 
     // Auto-follow: the creator should receive notifications for all activity on this issue.
     if let Err(e) =
-        IssueFollowerRepository::create(state.pool(), None, response.data.id, ctx.user.id).await
+        IssueFollowerRepository::create(state.pool(), None, response.data.id, user_id).await
     {
         tracing::warn!(?e, issue_id = %response.data.id, "failed to auto-follow issue for creator");
     }
 
     if let Some(analytics) = state.analytics() {
         analytics.track(
-            ctx.user.id,
+            user_id,
             "issue_created",
             serde_json::json!({
                 "issue_id": response.data.id,
@@ -320,7 +329,7 @@ async fn create_issue(
 
         if let Some(parent_id) = parent_issue_id {
             analytics.track(
-                ctx.user.id,
+                user_id,
                 "subtask_created",
                 serde_json::json!({
                     "issue_id": response.data.id,
@@ -332,7 +341,7 @@ async fn create_issue(
         }
     }
 
-    Ok(Json(response))
+    Ok(response)
 }
 
 #[instrument(
@@ -346,6 +355,17 @@ async fn update_issue(
     Path(issue_id): Path<Uuid>,
     Json(payload): Json<UpdateIssueRequest>,
 ) -> Result<Json<MutationResponse<Issue>>, ErrorResponse> {
+    update_issue_for_user(&state, ctx.user.id, issue_id, payload)
+        .await
+        .map(Json)
+}
+
+pub(super) async fn update_issue_for_user(
+    state: &AppState,
+    user_id: Uuid,
+    issue_id: Uuid,
+    payload: UpdateIssueRequest,
+) -> Result<MutationResponse<Issue>, ErrorResponse> {
     let issue = IssueRepository::find_by_id(state.pool(), issue_id)
         .await
         .map_err(|error| {
@@ -354,8 +374,7 @@ async fn update_issue(
         })?
         .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "issue not found"))?;
 
-    let organization_id =
-        ensure_project_access(state.pool(), ctx.user.id, issue.project_id).await?;
+    let organization_id = ensure_project_access(state.pool(), user_id, issue.project_id).await?;
 
     let mut tx = crate::db::begin_tx(state.pool()).await.map_err(|error| {
         tracing::error!(?error, "failed to begin transaction");
@@ -393,9 +412,9 @@ async fn update_issue(
         ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
     })?;
 
-    notify_issue_update_changes(&state, organization_id, ctx.user.id, &issue, &data).await;
+    notify_issue_update_changes(state, organization_id, user_id, &issue, &data).await;
 
-    Ok(Json(MutationResponse { data, txid }))
+    Ok(MutationResponse { data, txid })
 }
 
 #[instrument(

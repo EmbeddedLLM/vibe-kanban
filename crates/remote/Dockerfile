@@ -3,13 +3,16 @@
 ARG APP_NAME=remote
 ARG FEATURES=""
 ARG VITE_RELAY_API_BASE_URL=""
+ARG VITE_SELF_HOSTED_BOARD="false"
 ARG VITE_PUBLIC_REACT_VIRTUOSO_LICENSE_KEY=""
 
 FROM node:20-alpine AS fe-builder
 ARG VITE_RELAY_API_BASE_URL
+ARG VITE_SELF_HOSTED_BOARD
 ARG VITE_PUBLIC_REACT_VIRTUOSO_LICENSE_KEY
 WORKDIR /repo
 ENV VITE_RELAY_API_BASE_URL=${VITE_RELAY_API_BASE_URL}
+ENV VITE_SELF_HOSTED_BOARD=${VITE_SELF_HOSTED_BOARD}
 ENV VITE_PUBLIC_REACT_VIRTUOSO_LICENSE_KEY=${VITE_PUBLIC_REACT_VIRTUOSO_LICENSE_KEY}
 
 RUN corepack enable
@@ -87,12 +90,11 @@ RUN mkdir -p /app/bin
 
 # When building without FEATURES (self-hosted), strip the private billing dependency
 # and its feature flag from Cargo.toml so cargo doesn't try to fetch the private git repo.
-# Also remove the Cargo.lock which references the private repo.
+# Keep Cargo.lock so Cargo only prunes the unused dependency instead of upgrading the rest.
 RUN if [ -z "${FEATURES}" ]; then \
       sed -i '/^billing = {.*vibe-kanban-private.*/d' crates/remote/Cargo.toml; \
       sed -i '/^# private crate for billing/d' crates/remote/Cargo.toml; \
       sed -i 's/^vk-billing = \["dep:billing"\]/vk-billing = []/' crates/remote/Cargo.toml; \
-      rm -f crates/remote/Cargo.lock; \
     fi
 
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \

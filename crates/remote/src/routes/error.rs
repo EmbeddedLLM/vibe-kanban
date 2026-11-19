@@ -20,6 +20,10 @@ impl ErrorResponse {
             message: message.into(),
         }
     }
+
+    pub(super) fn into_parts(self) -> (StatusCode, String) {
+        (self.status, self.message)
+    }
 }
 
 impl IntoResponse for ErrorResponse {
