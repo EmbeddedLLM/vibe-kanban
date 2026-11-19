@@ -1,8 +1,9 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@vibe/ui/components/Button';
 import { Input } from '@vibe/ui/components/Input';
 import { Label } from '@vibe/ui/components/Label';
+import { writeClipboardText } from '@/shared/lib/clipboard';
 
 interface CopyableFieldProps {
   label: string;
@@ -16,15 +17,19 @@ export function CopyableField({ label, value, copyLabel }: CopyableFieldProps) {
   const input = useRef<HTMLInputElement>(null);
   const [feedback, setFeedback] = useState<'copied' | 'selected' | null>(null);
 
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setFeedback('copied');
-    } catch {
-      input.current?.focus();
-      input.current?.select();
-      setFeedback('selected');
+  async function copy(event: MouseEvent<HTMLButtonElement>) {
+    const button = event.currentTarget;
+    const field = input.current;
+    if (!field) return;
+
+    const copied = await writeClipboardText(value, () => {
+      field.focus();
+      field.select();
+    });
+    if (copied && document.activeElement === field) {
+      button.focus();
     }
+    setFeedback(copied ? 'copied' : 'selected');
   }
 
   return (
@@ -44,7 +49,7 @@ export function CopyableField({ label, value, copyLabel }: CopyableFieldProps) {
           type="button"
           variant="outline"
           className="shrink-0"
-          onClick={() => void copy()}
+          onClick={(event) => void copy(event)}
         >
           {copyLabel}
         </Button>

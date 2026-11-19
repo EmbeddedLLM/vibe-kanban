@@ -97,20 +97,6 @@ function activeEditable():
   return null;
 }
 
-/** Attempt to write to the OS clipboard. Returns true on success. */
-async function writeClipboardText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    try {
-      return document.execCommand('copy');
-    } catch {
-      return false;
-    }
-  }
-}
-
 /** Attempt to read from the OS clipboard. Returns empty string on failure. */
 async function readClipboardText(): Promise<string> {
   try {
@@ -265,7 +251,10 @@ function enqueueInsert(text: string) {
 /** Request map to resolve clipboard paste requests from the extension. */
 const pasteResolvers: Record<string, (text: string) => void> = {};
 
-import { parentClipboardWrite } from '@/shared/lib/clipboard';
+import {
+  parentClipboardWrite,
+  writeClipboardText,
+} from '@/shared/lib/clipboard';
 
 /** Ask the extension to read text from the OS clipboard (fallback path). */
 export function parentClipboardRead(): Promise<string> {
