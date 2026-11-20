@@ -90,7 +90,7 @@ VITE_RELAY_API_BASE_URL=https://relay.your-domain.com
 # Invite-only email and password accounts on a fresh database
 SELF_HOST_PASSWORD_ACCOUNTS=true
 SELF_HOST_LOCAL_AUTH_EMAIL=admin@example.com
-SELF_HOST_LOCAL_AUTH_PASSWORD=<password_with_at_least_15_characters>
+SELF_HOST_LOCAL_AUTH_PASSWORD=<password_with_at_least_12_characters>
 
 # OAuth providers for deployments that disable password accounts
 GITHUB_OAUTH_CLIENT_ID=
@@ -269,7 +269,7 @@ With `SELF_HOST_PASSWORD_ACCOUNTS=true`, the first startup creates the operator 
 3. Your teammate opens the link, checks the email and organisation, and chooses a display name and password. They can then sign in with that email and password.
 4. Under **Pending invitations**, you can copy a valid link again, revoke it, or replace it. Links expire after seven days and can be used once.
 
-Each member can create a project-scoped key under **Settings → MCP Access** for a client that supports Streamable HTTP with a bearer token. Copy the key when it appears and keep it in the client’s secret store. Kanban changes made with the key are attributed to its owner.
+Each member can create a project-scoped key under **Settings → MCP Access** and choose when it expires. The default is 30 days. A key set to **Never** stays active until it is revoked or the member loses project access. After creating a key, pick **Codex**, **Claude Code**, or **Pi**, copy the setup command, and run it in the terminal you use to start your agent. The command contains the newly issued secret and sets it in that shell. Load the secret from your usual secret store for future sessions. Other clients can use the MCP URL with Streamable HTTP and the bearer key. Kanban changes are attributed to the key’s owner.
 
 ### Recover a password account
 
@@ -369,6 +369,10 @@ docker compose -f docker-compose.prod.yml ps
 ## Troubleshooting
 
 <AccordionGroup>
+<Accordion title="Settings are slow over plain HTTP">
+Browsers can queue API requests behind live board sync requests on HTTP/1.1. The self-hosted board uses shorter live sync requests on plain HTTP. Use the HTTPS Caddy endpoint for production so the browser can multiplex requests over HTTP/2.
+</Accordion>
+
 <Accordion title="SSL certificate issues">
 Caddy automatically obtains SSL certificates from Let's Encrypt. Ensure:
 - Your domain's DNS is correctly pointing to your server

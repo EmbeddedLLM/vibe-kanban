@@ -1355,8 +1355,11 @@ export interface McpCredential {
   name: string;
   project_id: string;
   project_name?: string;
-  expires_at: string;
+  expires_at: string | null;
 }
+
+export type McpCredentialExpiration =
+  'seven_days' | 'thirty_days' | 'ninety_days' | 'one_year' | 'never';
 
 export const mcpCredentialsApi = {
   list: async (signal?: AbortSignal): Promise<McpCredential[]> => {
@@ -1364,7 +1367,11 @@ export const mcpCredentialsApi = {
     return handleRemoteResponse<McpCredential[]>(response);
   },
 
-  create: async (data: { name: string; project_id: string }) => {
+  create: async (data: {
+    name: string;
+    project_id: string;
+    expiration: McpCredentialExpiration;
+  }) => {
     const response = await makeRemoteRequest('/v1/mcp_credentials', {
       method: 'POST',
       body: JSON.stringify(data),

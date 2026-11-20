@@ -27,7 +27,7 @@ use crate::{
 };
 
 const INVITATION_PREFIX: &str = "password-";
-const MIN_PASSWORD_LENGTH: usize = 15;
+const MIN_PASSWORD_LENGTH: usize = 12;
 const MAX_PASSWORD_BYTES: usize = 1024;
 static PASSWORD_WORKERS: Semaphore = Semaphore::const_new(4);
 static LOGIN_WINDOW: LazyLock<Mutex<LoginWindow>> =
@@ -139,7 +139,7 @@ fn hash(password: &str) -> Result<String, PasswordError> {
 async fn hash_new_password(password: String) -> Result<String, PasswordError> {
     if password.len() > MAX_PASSWORD_BYTES || password.chars().count() < MIN_PASSWORD_LENGTH {
         return Err(PasswordError::InvalidInput(
-            "Use at least 15 characters and at most 1024 bytes",
+            "Use at least 12 characters and at most 1024 bytes",
         ));
     }
     password_job(move || hash(&password)).await?
@@ -622,6 +622,7 @@ mod tests {
                 .await
                 .unwrap()
         );
-        assert!(hash_new_password("too short".to_owned()).await.is_err());
+        assert!(hash_new_password("123456789AB".to_owned()).await.is_err());
+        assert!(hash_new_password("123456789ABC".to_owned()).await.is_ok());
     }
 }

@@ -29,6 +29,31 @@ pub(super) struct McpPrincipal {
 struct CreateCredential {
     name: String,
     project_id: Uuid,
+    #[serde(default)]
+    expiration: Expiration,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum Expiration {
+    SevenDays,
+    #[default]
+    ThirtyDays,
+    NinetyDays,
+    OneYear,
+    Never,
+}
+
+impl Expiration {
+    fn days(&self) -> Option<i32> {
+        match self {
+            Self::SevenDays => Some(7),
+            Self::ThirtyDays => Some(30),
+            Self::NinetyDays => Some(90),
+            Self::OneYear => Some(365),
+            Self::Never => None,
+        }
+    }
 }
 
 #[derive(Serialize, sqlx::FromRow)]
@@ -37,7 +62,7 @@ struct Credential {
     name: String,
     project_id: Uuid,
     project_name: String,
-    expires_at: DateTime<Utc>,
+    expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize)]
@@ -100,8 +125,8 @@ async fn create_credential(
     }
     let credential = sqlx::query_as::<_, Credential>(
         "WITH issued AS (
-             INSERT INTO mcp_credentials (token_hash, name, project_id, organization_id, user_id)
-             VALUES ($1, $2, $3, $4, $5)
+             INSERT INTO mcp_credentials (token_hash, name, project_id, organization_id, user_id, expires_at)
+             VALUES ($1, $2, $3, $4, $5, NOW() + make_interval(days => $6))
              RETURNING id, name, project_id, expires_at
          )
          SELECT issued.*, p.name AS project_name
@@ -112,6 +137,7 @@ async fn create_credential(
     .bind(payload.project_id)
     .bind(organization_id)
     .bind(ctx.user.id)
+    .bind(payload.expiration.days())
     .fetch_one(&mut *tx)
     .await
     .map_err(credential_db_error)?;
@@ -131,7 +157,7 @@ async fn list_credentials(
     let credentials = sqlx::query_as::<_, Credential>(
         "SELECT c.id, c.name, c.project_id, p.name AS project_name, c.expires_at
          FROM mcp_credentials c JOIN projects p ON p.id = c.project_id
-         WHERE c.user_id = $1 ORDER BY c.expires_at DESC, c.id",
+         WHERE c.user_id = $1 ORDER BY c.expires_at DESC NULLS LAST, c.id",
     )
     .bind(ctx.user.id)
     .fetch_all(state.pool())
@@ -176,7 +202,7 @@ pub(super) async fn authenticate(
          JOIN projects p ON (p.id, p.organization_id) = (c.project_id, c.organization_id)
          JOIN organization_member_metadata m
            ON (m.organization_id, m.user_id) = (c.organization_id, c.user_id)
-         WHERE c.token_hash = $1 AND c.expires_at > NOW()",
+         WHERE c.token_hash = $1 AND (c.expires_at IS NULL OR c.expires_at > NOW())",
     )
     .bind(&token_hash[..])
     .fetch_optional(state.pool())

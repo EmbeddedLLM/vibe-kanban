@@ -19,13 +19,13 @@ This page covers connecting **external MCP clients** to Vibe Kanban's MCP server
 
 Use the `/mcp` endpoint on your [self-hosted Vibe Kanban server](/self-hosting/deploy-docker). Use HTTPS for a public endpoint.
 
-1. Sign in and open **Settings → Account Settings → MCP Access**. Select an organisation and project, name your harness, and choose **Create MCP key**. Copy the key while it is visible and store it in your harness's secret store.
-2. For Codex CLI, copy the setup command and run it with `VIBE_KANBAN_MCP_TOKEN` set to your key. Start Codex from that shell. For another client, copy the MCP URL and configure Streamable HTTP with an `Authorization: Bearer` header containing your key.
+1. Sign in and open **Settings → MCP Access**. Select an organisation and project, enter a key name, choose an expiry, and select **Create MCP key**.
+2. Pick **Codex**, **Claude Code**, or **Pi** and copy the setup command. It contains the newly issued key. Run it in a private terminal and start the client from the same shell. Save the key in your secret store for future sessions. Other clients can use the MCP URL with Streamable HTTP and an `Authorization: Bearer` header.
 3. Call `get_identity` to confirm the member and project IDs. The other tools list statuses, search issues, create and move issues, add assignees, and post comments.
 
-Each key authorises one team member's harness for one project and expires after 30 days. **Your keys** shows each key's name, project and expiry. Use **Revoke key** to end access immediately. Comments show the member as the author, and server audit logs include the member ID and credential name for changes. Removing a member from an organisation revokes their keys for its projects.
+Each key authorises one team member for one project. The default expiry is 30 days. **Your keys** shows each key's name, project, and expiry. Use **Revoke key** to end access immediately, including for keys set to **Never**. Comments show the member as the author, and server audit logs include the member ID and credential name for changes. Removing a member from an organisation revokes their keys for its projects.
 
-For scripted management, use your app session access token. `POST /v1/mcp_credentials` takes `name` and `project_id` and returns the bearer `token` once. `GET /v1/mcp_credentials` lists your key metadata, and `DELETE /v1/mcp_credentials/{id}` revokes a key.
+For scripted management, use your app session access token. `POST /v1/mcp_credentials` takes `name`, `project_id`, and optional `expiration` (`seven_days`, `thirty_days`, `ninety_days`, `one_year`, or `never`). It returns the bearer `token` once. `GET /v1/mcp_credentials` lists your key metadata, and `DELETE /v1/mcp_credentials/{id}` revokes a key.
 
 ## Connect to the local stdio server
 

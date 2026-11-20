@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@vibe/ui/components/Button';
@@ -14,12 +14,26 @@ import {
 } from '@vibe/ui/components/Select';
 import { CopyableField } from '@/shared/components/CopyableField';
 import { useAuth } from '@/shared/hooks/auth/useAuth';
-import { useOrganizationProjects } from '@/shared/hooks/useOrganizationProjects';
+import { useOrganizationProjectList } from '@/shared/hooks/useOrganizationProjectList';
 import { useUserOrganizations } from '@/shared/hooks/useUserOrganizations';
-import { mcpCredentialsApi, type McpCredential } from '@/shared/lib/api';
+import {
+  mcpCredentialsApi,
+  type McpCredential,
+  type McpCredentialExpiration,
+} from '@/shared/lib/api';
+import { mcpSetupCommand, type McpClient } from '@/shared/lib/mcpSetup';
 import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
 import { useOrganizationStore } from '@/shared/stores/useOrganizationStore';
 import { SettingsCard } from './shared/SettingsComponents';
+import { useSettingsDirty } from './SettingsDirtyContext';
+
+const expirationOptions = [
+  ['seven_days', 'settings.mcpAccess.sevenDays'],
+  ['thirty_days', 'settings.mcpAccess.thirtyDays'],
+  ['ninety_days', 'settings.mcpAccess.ninetyDays'],
+  ['one_year', 'settings.mcpAccess.oneYear'],
+  ['never', 'settings.mcpAccess.never'],
+] as const;
 
 export function McpAccessSettingsSection() {
   const { t } = useTranslation('settings');
@@ -38,12 +52,17 @@ export function McpAccessSettingsSection() {
 function MemberMcpAccess({ userId }: { userId: string }) {
   const { t } = useTranslation('settings');
   const queryClient = useQueryClient();
+  const { setDirty } = useSettingsDirty();
+  const mounted = useRef(false);
   const organizationField = useId();
   const projectField = useId();
   const nameField = useId();
+  const expirationField = useId();
   const [organizationChoice, setOrganizationChoice] = useState('');
   const [projectChoice, setProjectChoice] = useState('');
   const [name, setName] = useState('');
+  const [expiration, setExpiration] =
+    useState<McpCredentialExpiration>('thirty_days');
   const [issued, setIssued] = useState<
     (Pick<McpCredential, 'id' | 'name'> & { token: string }) | null
   >(null);
@@ -56,49 +75,83 @@ function MemberMcpAccess({ userId }: { userId: string }) {
     ) ??
     organizationList.find((item) => !item.is_personal) ??
     organizationList[0];
-  const projects = useOrganizationProjects(organization?.id ?? null);
-  const project = projects.data?.find((item) => item.id === projectChoice);
+  const projects = useOrganizationProjectList(organization?.id ?? null, true);
+  const project =
+    projects.data?.find((item) => item.id === projectChoice) ??
+    (projects.data?.length === 1 ? projects.data[0] : undefined);
   const credentialsKey = ['mcp-credentials', userId] as const;
   const credentials = useQuery({
     queryKey: credentialsKey,
     queryFn: ({ signal }) => mcpCredentialsApi.list(signal),
+    staleTime: 30_000,
   });
+
+  async function updateCredentials(
+    update: (current: McpCredential[]) => McpCredential[]
+  ) {
+    // Discard reads started before the server confirmed the mutation.
+    await queryClient.cancelQueries({ queryKey: credentialsKey });
+    queryClient.setQueryData<McpCredential[]>(credentialsKey, (current) =>
+      update(current ?? [])
+    );
+    void queryClient.invalidateQueries({ queryKey: credentialsKey });
+  }
+
   const create = useMutation({
-    mutationFn: async (data: { name: string; project_id: string }) => {
-      const { id, name, token } = await mcpCredentialsApi.create(data);
-      setIssued({ id, name, token });
+    mutationFn: async (
+      data: Parameters<typeof mcpCredentialsApi.create>[0]
+    ) => {
+      const { token, ...credential } = await mcpCredentialsApi.create(data);
+      if (mounted.current) {
+        setDirty('mcp-key-issued', true);
+        setIssued({ id: credential.id, name: credential.name, token });
+      }
+      return credential;
     },
-    onSuccess: () => {
+    onSuccess: (credential) => {
       setName('');
-      void queryClient.invalidateQueries({ queryKey: credentialsKey });
+      return updateCredentials((current) => [
+        credential,
+        ...current.filter((item) => item.id !== credential.id),
+      ]);
+    },
+    onSettled: () => {
+      if (mounted.current) setDirty('mcp-key-creating', false);
     },
   });
-  const revoke = useMutation({
-    mutationFn: mcpCredentialsApi.revoke,
-    onSuccess: (_, id) => {
-      setIssued((current) => (current?.id === id ? null : current));
-      void queryClient.invalidateQueries({ queryKey: credentialsKey });
-    },
-  });
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      setDirty('mcp-key-creating', false);
+      setDirty('mcp-key-issued', false);
+    };
+  }, [setDirty]);
+
+  useEffect(() => {
+    setDirty('mcp-key-issued', Boolean(issued));
+  }, [issued, setDirty]);
 
   const mcpUrl = new URL('/mcp', getRemoteApiUrl() || window.location.origin)
     .href;
-  const codexCommand = `codex mcp add vibe_kanban --url "${mcpUrl}" --bearer-token-env-var VIBE_KANBAN_MCP_TOKEN`;
 
   function createKey(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!project || !name.trim() || create.isPending) return;
-    create.mutate({ name: name.trim(), project_id: project.id });
+    if (!project || !name.trim() || create.isPending || issued) return;
+    setDirty('mcp-key-creating', true);
+    create.mutate({ name: name.trim(), project_id: project.id, expiration });
   }
 
-  async function revokeKey(credential: McpCredential) {
-    const result = await ConfirmDialog.show({
-      title: t('settings.mcpAccess.revoke'),
-      message: t('settings.mcpAccess.confirmRevoke', { name: credential.name }),
-      confirmText: t('settings.mcpAccess.revoke'),
-      variant: 'destructive',
-    });
-    if (result === 'confirmed') revoke.mutate(credential.id);
+  function closeIssuedKey() {
+    setIssued(null);
+  }
+
+  function removeRevokedKey(id: string) {
+    setIssued((current) => (current?.id === id ? null : current));
+    return updateCredentials((current) =>
+      current.filter((item) => item.id !== id)
+    );
   }
 
   return (
@@ -172,19 +225,49 @@ function MemberMcpAccess({ userId }: { userId: string }) {
               {t('settings.mcpAccess.noProjects')}
             </p>
           ) : null}
-          <div className="space-y-2">
-            <Label htmlFor={nameField}>
-              {t('settings.mcpAccess.harnessName')}
-            </Label>
-            <Input
-              id={nameField}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={t('settings.mcpAccess.harnessPlaceholder')}
-              maxLength={80}
-              disabled={create.isPending}
-              required
-            />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor={nameField}>
+                {t('settings.mcpAccess.keyName')}
+              </Label>
+              <Input
+                id={nameField}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder={t('settings.mcpAccess.keyNamePlaceholder')}
+                maxLength={80}
+                disabled={create.isPending}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={expirationField}>
+                {t('settings.mcpAccess.expiration')}
+              </Label>
+              <Select
+                value={expiration}
+                onValueChange={(value) =>
+                  setExpiration(value as McpCredentialExpiration)
+                }
+                disabled={create.isPending}
+              >
+                <SelectTrigger id={expirationField}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {expirationOptions.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {t(label)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {expiration === 'never' && (
+                <p className="text-xs text-low">
+                  {t('settings.mcpAccess.neverHint')}
+                </p>
+              )}
+            </div>
           </div>
           {create.isError && (
             <p role="alert" className="text-sm text-error">
@@ -193,7 +276,7 @@ function MemberMcpAccess({ userId }: { userId: string }) {
           )}
           <Button
             type="submit"
-            disabled={!project || !name.trim() || create.isPending}
+            disabled={!project || !name.trim() || create.isPending || !!issued}
           >
             {t(
               create.isPending
@@ -203,27 +286,12 @@ function MemberMcpAccess({ userId }: { userId: string }) {
           </Button>
         </form>
         {issued && (
-          <div className="space-y-3 rounded-sm border border-border bg-secondary p-3">
-            <p className="text-sm font-medium text-high">
-              {t('settings.mcpAccess.created', { name: issued.name })}
-            </p>
-            <p className="text-sm text-low">
-              {t('settings.mcpAccess.saveKey')}
-            </p>
-            <CopyableField
-              key={issued.id}
-              label={t('settings.mcpAccess.key')}
-              value={issued.token}
-              copyLabel={t('settings.mcpAccess.copyKey')}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIssued(null)}
-            >
-              {t('common:buttons.close')}
-            </Button>
-          </div>
+          <IssuedKeySetup
+            key={issued.id}
+            issued={issued}
+            mcpUrl={mcpUrl}
+            onClose={closeIssuedKey}
+          />
         )}
       </SettingsCard>
 
@@ -236,11 +304,6 @@ function MemberMcpAccess({ userId }: { userId: string }) {
           value={mcpUrl}
           copyLabel={t('settings.mcpAccess.copyUrl')}
         />
-        <CopyableField
-          label={t('settings.mcpAccess.codexCommand')}
-          value={codexCommand}
-          copyLabel={t('settings.mcpAccess.copyCommand')}
-        />
       </SettingsCard>
 
       <SettingsCard title={t('settings.mcpAccess.yourKeys')}>
@@ -248,52 +311,166 @@ function MemberMcpAccess({ userId }: { userId: string }) {
           <p role="status" className="text-sm text-low">
             {t('common:states.loading')}
           </p>
-        ) : credentials.isError ? (
+        ) : credentials.isError && !credentials.data ? (
           <p role="alert" className="text-sm text-error">
             {credentials.error.message}
           </p>
         ) : credentials.data?.length ? (
           <ul className="divide-y divide-border rounded-sm border border-border">
             {credentials.data.map((credential) => (
-              <li
+              <CredentialRow
                 key={credential.id}
-                className="flex items-center justify-between gap-3 p-3"
-              >
-                <div className="min-w-0">
-                  <p className="break-words text-sm font-medium text-high">
-                    {credential.name}
-                  </p>
-                  <p className="break-words text-xs text-low">
-                    {credential.project_name ?? credential.project_id}
-                  </p>
-                  <p className="text-xs text-low">
-                    {t('settings.mcpAccess.expires', {
-                      date: new Date(
-                        credential.expires_at
-                      ).toLocaleDateString(),
-                    })}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={revoke.isPending}
-                  onClick={() => void revokeKey(credential)}
-                >
-                  {t('settings.mcpAccess.revoke')}
-                </Button>
-              </li>
+                credential={credential}
+                onRevoked={removeRevokedKey}
+              />
             ))}
           </ul>
         ) : (
           <p className="text-sm text-low">{t('settings.mcpAccess.noKeys')}</p>
         )}
-        {revoke.isError && (
+        {credentials.isError && credentials.data && (
           <p role="alert" className="text-sm text-error">
-            {revoke.error.message}
+            {credentials.error.message}
           </p>
         )}
       </SettingsCard>
     </>
+  );
+}
+
+function IssuedKeySetup({
+  issued,
+  mcpUrl,
+  onClose,
+}: {
+  issued: { id: string; name: string; token: string };
+  mcpUrl: string;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation('settings');
+  const clientField = useId();
+  const setupHeading = useRef<HTMLHeadingElement>(null);
+  const [client, setClient] = useState<McpClient>('codex');
+
+  useEffect(() => {
+    setupHeading.current?.focus();
+  }, []);
+
+  return (
+    <div className="space-y-3 rounded-sm border border-border bg-secondary p-3">
+      <h3
+        ref={setupHeading}
+        tabIndex={-1}
+        className="text-sm font-medium text-high"
+      >
+        {t('settings.mcpAccess.created', { name: issued.name })}
+      </h3>
+      <p className="text-sm text-low">{t('settings.mcpAccess.saveKey')}</p>
+      <div className="space-y-2">
+        <p id={clientField} className="text-sm font-medium">
+          {t('settings.mcpAccess.client')}
+        </p>
+        <div
+          role="group"
+          aria-labelledby={clientField}
+          className="flex flex-wrap gap-2"
+        >
+          {(
+            [
+              ['codex', 'Codex'],
+              ['claude', 'Claude Code'],
+              ['pi', 'Pi'],
+            ] as const
+          ).map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={value === client ? 'default' : 'outline'}
+              aria-pressed={value === client}
+              onClick={() => setClient(value)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <CopyableField
+        key={client}
+        label={t('settings.mcpAccess.setupCommand')}
+        value={mcpSetupCommand(client, mcpUrl, issued)}
+        copyLabel={t('settings.mcpAccess.copyCommand')}
+      />
+      <p className="text-sm text-low">{t('settings.mcpAccess.commandHint')}</p>
+      <CopyableField
+        label={t('settings.mcpAccess.key')}
+        value={issued.token}
+        copyLabel={t('settings.mcpAccess.copyKey')}
+      />
+      <Button type="button" variant="outline" onClick={onClose}>
+        {t('common:buttons.close')}
+      </Button>
+    </div>
+  );
+}
+
+function CredentialRow({
+  credential,
+  onRevoked,
+}: {
+  credential: McpCredential;
+  onRevoked: (id: string) => Promise<void>;
+}) {
+  const { t } = useTranslation('settings');
+  const revoke = useMutation({
+    mutationFn: mcpCredentialsApi.revoke,
+    onSuccess: (_, id) => onRevoked(id),
+  });
+
+  async function revokeKey() {
+    const result = await ConfirmDialog.show({
+      title: t('settings.mcpAccess.revoke'),
+      message: t('settings.mcpAccess.confirmRevoke', { name: credential.name }),
+      confirmText: t('settings.mcpAccess.revoke'),
+      variant: 'destructive',
+    });
+    if (result === 'confirmed') revoke.mutate(credential.id);
+  }
+
+  return (
+    <li className="space-y-2 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="break-words text-sm font-medium text-high">
+            {credential.name}
+          </p>
+          <p className="break-words text-xs text-low">
+            {credential.project_name ?? credential.project_id}
+          </p>
+          <p className="text-xs text-low">
+            {credential.expires_at
+              ? t('settings.mcpAccess.expires', {
+                  date: new Date(credential.expires_at).toLocaleDateString(),
+                })
+              : t('settings.mcpAccess.neverExpires')}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={revoke.isPending}
+          onClick={() => void revokeKey()}
+        >
+          {revoke.isPending
+            ? t('settings.mcpAccess.revoking')
+            : t('settings.mcpAccess.revoke')}
+        </Button>
+      </div>
+      {revoke.isError && (
+        <p role="alert" className="text-sm text-error">
+          {revoke.error.message}
+        </p>
+      )}
+    </li>
   );
 }

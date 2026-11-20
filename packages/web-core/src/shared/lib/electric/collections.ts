@@ -70,6 +70,7 @@ type SyncConfigLike = {
 
 const DEFAULT_GC_TIME_MS = 5 * 60 * 1000;
 const ELECTRIC_READY_TIMEOUT_MS = 3000;
+const HTTP_BOARD_LIVE_REQUEST_TIMEOUT_MS = 1800;
 const FALLBACK_REFRESH_INTERVAL_MS = 30 * 1000;
 
 const collectionCache = new Map<string, ReturnType<typeof createCollection>>();
@@ -297,6 +298,7 @@ function createErrorHandlingFetch(args: {
   onError: (error: SyncError) => void;
   onElectricUnavailable: () => void;
   isPaused: () => boolean;
+  useShortLiveRequests: boolean;
 }) {
   return async (
     input: RequestInfo | URL,
@@ -310,9 +312,15 @@ function createErrorHandlingFetch(args: {
     }
 
     try {
-      return await fetch(input, init);
+      const isLiveRequest =
+        args.useShortLiveRequests &&
+        new URL(String(input)).searchParams.get('live') === 'true';
+      return await fetch(
+        input,
+        isLiveRequest ? { ...init, priority: 'low' } : init
+      );
     } catch (error) {
-      if (isTransientElectricFailure(error)) {
+      if (init?.signal?.aborted || isTransientElectricFailure(error)) {
         throw error;
       }
 
@@ -343,9 +351,17 @@ function createElectricShapeOptions(args: {
   });
 
   const url = buildUrl(args.shape.url, args.params);
+  const apiBase = getRemoteApiUrl();
+  // HTTP/1.1 long polls can fill the browser's per-origin connection pool.
+  const useShortLiveRequests =
+    import.meta.env.VITE_SELF_HOSTED_BOARD === 'true' &&
+    new URL(apiBase || window.location.origin).protocol === 'http:';
 
   return {
-    url: `${getRemoteApiUrl()}${url}`,
+    url: `${apiBase}${url}`,
+    liveRequestTimeoutMs: useShortLiveRequests
+      ? HTTP_BOARD_LIVE_REQUEST_TIMEOUT_MS
+      : undefined,
     params: args.params,
     headers: {
       Authorization: async () => {
@@ -364,6 +380,7 @@ function createElectricShapeOptions(args: {
       onError: args.reportError,
       onElectricUnavailable: args.onElectricUnavailable,
       isPaused: () => isPaused,
+      useShortLiveRequests,
     }),
     onError: (error: { status?: number; message?: string; name?: string }) => {
       if (isPaused) return;

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 interface SettingsDirtyContextValue {
   isDirty: boolean;
+  dirtySections: ReadonlySet<string>;
   setDirty: (sectionId: string, dirty: boolean) => void;
   clearAll: () => void;
 }
@@ -35,7 +36,9 @@ export function SettingsDirtyProvider({ children }: { children: ReactNode }) {
   const isDirty = dirtySections.size > 0;
 
   return (
-    <SettingsDirtyContext.Provider value={{ isDirty, setDirty, clearAll }}>
+    <SettingsDirtyContext.Provider
+      value={{ isDirty, dirtySections, setDirty, clearAll }}
+    >
       {children}
     </SettingsDirtyContext.Provider>
   );

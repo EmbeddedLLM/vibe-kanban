@@ -73,13 +73,13 @@ export function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
               name="next"
               type="password"
               autoComplete="new-password"
-              minLength={15}
+              minLength={12}
               maxLength={1024}
               aria-describedby="new-password-hint"
               required
             />
             <p id="new-password-hint" className="text-xs text-low">
-              Use at least 15 characters.
+              Use at least 12 characters.
             </p>
           </div>
           <div className="space-y-half">

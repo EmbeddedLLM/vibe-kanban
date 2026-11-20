@@ -175,13 +175,13 @@ export default function PasswordAccountLinkPage({
                   autoComplete="new-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  minLength={15}
+                  minLength={12}
                   maxLength={1024}
                   aria-describedby="password-hint"
                   required
                 />
                 <p id="password-hint" className="text-xs text-low">
-                  Use at least 15 characters.
+                  Use at least 12 characters.
                 </p>
               </div>
               <div className="space-y-half">

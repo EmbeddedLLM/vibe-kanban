@@ -5,13 +5,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { siDiscord, siGithub } from "simple-icons";
 import { AppBar, type AppBarHostStatus } from "@vibe/ui/components/AppBar";
 import { XIcon, PlusIcon, HouseIcon, KanbanIcon } from "@phosphor-icons/react";
 import { MobileDrawer } from "@vibe/ui/components/MobileDrawer";
-import type { Project } from "shared/remote-types";
 import { useIsMobile } from "@/shared/hooks/useIsMobile";
 import { cn } from "@/shared/lib/utils";
 import { useUserOrganizations } from "@/shared/hooks/useUserOrganizations";
@@ -23,7 +21,7 @@ import { AppBarNotificationBellContainer } from "@/pages/workspaces/AppBarNotifi
 import { SettingsDialog } from "@/shared/dialogs/settings/SettingsDialog";
 import { CommandBarDialog } from "@/shared/dialogs/command-bar/CommandBarDialog";
 import { useCommandBarShortcut } from "@/shared/hooks/useCommandBarShortcut";
-import { listOrganizationProjects } from "@remote/shared/lib/api";
+import { useOrganizationProjectList } from "@/shared/hooks/useOrganizationProjectList";
 import { RemoteAppBarUserPopoverContainer } from "@remote/app/layout/RemoteAppBarUserPopoverContainer";
 import { RemoteNavbarContainer } from "@remote/app/layout/RemoteNavbarContainer";
 import { RemoteDesktopNavbar } from "@remote/app/layout/RemoteDesktopNavbar";
@@ -108,19 +106,7 @@ export function RemoteAppShell({ children }: RemoteAppShellProps) {
     return selectedOrgId;
   }, [organizations, selectedOrgId]);
 
-  const projectsQuery = useQuery({
-    queryKey: ["remote-app-shell", "projects", activeOrganizationId],
-    queryFn: async (): Promise<Project[]> => {
-      if (!activeOrganizationId) {
-        return [];
-      }
-
-      const projects = await listOrganizationProjects(activeOrganizationId);
-      return [...projects].sort((a, b) => a.sort_order - b.sort_order);
-    },
-    enabled: isSignedIn && !!activeOrganizationId,
-    staleTime: 30_000,
-  });
+  const projectsQuery = useOrganizationProjectList(activeOrganizationId);
 
   const projects = projectsQuery.data ?? [];
   const isLoadingProjects =

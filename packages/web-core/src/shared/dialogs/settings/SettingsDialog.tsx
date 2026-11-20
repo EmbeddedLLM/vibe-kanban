@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { CaretLeftIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import { create, useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/shared/lib/modals';
+import { useAppRuntime } from '@/shared/hooks/useAppRuntime';
 
 import { cn } from '@/shared/lib/utils';
 import { SettingsSection } from './settings/SettingsSection';
@@ -158,8 +159,13 @@ function SettingsDialogContent({
   onClose,
 }: SettingsDialogContentProps) {
   const { t } = useTranslation('settings');
-  const { isDirty } = useSettingsDirty();
+  const { isDirty, dirtySections } = useSettingsDirty();
+  const isCreatingMcpKey = dirtySections.has('mcp-key-creating');
+  const hasIssuedMcpKey = dirtySections.has('mcp-key-issued');
   const { availableHosts, hostsResolved, selectedHost } = useSettingsHost();
+  const isSelfHostedBoard =
+    useAppRuntime() === 'remote' &&
+    import.meta.env.VITE_SELF_HOSTED_BOARD === 'true';
 
   const resolvedInitialSection = useMemo<SettingsSectionType>(() => {
     if (
@@ -171,12 +177,12 @@ function SettingsDialogContent({
       return initialSection;
     }
 
-    if (hostsResolved && availableHosts.length === 0) {
+    if (isSelfHostedBoard || (hostsResolved && availableHosts.length === 0)) {
       return 'organizations';
     }
 
     return 'general';
-  }, [availableHosts.length, hostsResolved, initialSection]);
+  }, [availableHosts.length, hostsResolved, initialSection, isSelfHostedBoard]);
 
   const [activeSection, setActiveSection] = useState<SettingsSectionType>(
     resolvedInitialSection
@@ -187,31 +193,48 @@ function SettingsDialogContent({
   );
   const isConfirmingRef = useRef(false);
 
-  const handleCloseWithConfirmation = useCallback(async () => {
-    if (isConfirmingRef.current) return;
-
-    if (isDirty) {
+  const confirmLeaving = useCallback(
+    async (closing: boolean) => {
+      if (isConfirmingRef.current) return false;
+      const isMcpSetup = isCreatingMcpKey || hasIssuedMcpKey;
+      if (!isMcpSetup && (!closing || !isDirty)) return true;
       isConfirmingRef.current = true;
       try {
         const result = await ConfirmDialog.show({
-          title: t('settings.unsavedChanges.title'),
-          message: t('settings.unsavedChanges.message'),
-          confirmText: t('settings.unsavedChanges.discard'),
+          title: t(
+            isMcpSetup
+              ? 'settings.mcpAccess.leaveTitle'
+              : 'settings.unsavedChanges.title'
+          ),
+          message: t(
+            isCreatingMcpKey
+              ? 'settings.mcpAccess.leaveWhileCreating'
+              : hasIssuedMcpKey
+                ? 'settings.mcpAccess.leaveMessage'
+                : 'settings.unsavedChanges.message'
+          ),
+          confirmText: t(
+            isMcpSetup
+              ? 'settings.mcpAccess.leave'
+              : 'settings.unsavedChanges.discard'
+          ),
           cancelText: t('settings.unsavedChanges.cancel'),
           variant: 'destructive',
         });
-        if (result === 'confirmed') {
-          onClose();
-        }
+        return result === 'confirmed';
       } finally {
         isConfirmingRef.current = false;
       }
-    } else {
-      onClose();
-    }
-  }, [isDirty, onClose, t]);
+    },
+    [hasIssuedMcpKey, isCreatingMcpKey, isDirty, t]
+  );
 
-  const handleSectionSelect = (sectionId: SettingsSectionType) => {
+  const handleCloseWithConfirmation = useCallback(async () => {
+    if (await confirmLeaving(true)) onClose();
+  }, [confirmLeaving, onClose]);
+
+  const handleSectionSelect = async (sectionId: SettingsSectionType) => {
+    if (sectionId !== activeSection && !(await confirmLeaving(false))) return;
     setActiveSection(sectionId);
     setMobileShowContent(true);
   };

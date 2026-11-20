@@ -7,6 +7,7 @@ import type {
   InitUploadRequest,
   InitUploadResponse,
   ListRelayHostsResponse,
+  Project,
   RelayHost,
   UpdateIssueRequest,
   UpdateProjectRequest,
@@ -169,6 +170,19 @@ export async function listRelayHosts(): Promise<RelayHost[]> {
 
   const body = (await response.json()) as ListRelayHostsResponse;
   return body.hosts;
+}
+
+export async function listOrganizationProjects(
+  organizationId: string,
+  signal?: AbortSignal
+) {
+  const query = new URLSearchParams({ organization_id: organizationId });
+  const response = await makeRequest(`/v1/projects?${query}`, { signal });
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to list projects');
+  }
+  const { projects } = (await response.json()) as { projects: Project[] };
+  return projects;
 }
 
 // ---------------------------------------------------------------------------
