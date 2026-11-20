@@ -269,7 +269,7 @@ With `SELF_HOST_PASSWORD_ACCOUNTS=true`, the first startup creates the operator 
 3. Your teammate opens the link, checks the email and organisation, and chooses a display name and password. They can then sign in with that email and password.
 4. Under **Pending invitations**, you can copy a valid link again, revoke it, or replace it. Links expire after seven days and can be used once.
 
-Each member can create a project-scoped key under **Settings → MCP Access** and choose when it expires. The default is 30 days. A key set to **Never** stays active until it is revoked or the member loses project access. After creating a key, pick **Codex**, **Claude Code**, or **Pi**, copy the setup command, and run it in the terminal you use to start your agent. The command contains the newly issued secret and sets it in that shell. Load the secret from your usual secret store for future sessions. Other clients can use the MCP URL with Streamable HTTP and the bearer key. Kanban changes are attributed to the key’s owner.
+Each member can create a project-scoped key under **Settings → MCP Access** and choose when it expires. The default is 30 days. A key set to **Never** stays active until it is revoked or the member loses project access. The [MCP setup guide](/integrations/vibe-kanban-mcp-server#connect-to-a-self-hosted-board) covers connecting Codex, Claude Code, and Pi with a saved or newly issued key. Other clients can use the MCP URL with Streamable HTTP and the bearer key. Kanban changes are attributed to the key’s owner.
 
 ### Recover a password account
 

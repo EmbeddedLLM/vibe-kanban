@@ -19,11 +19,11 @@ This page covers connecting **external MCP clients** to Vibe Kanban's MCP server
 
 Use the `/mcp` endpoint on your [self-hosted Vibe Kanban server](/self-hosting/deploy-docker). Set `SERVER_PUBLIC_BASE_URL` to the board URL that clients use so the MCP server accepts its hostname. Use HTTPS for a public endpoint.
 
-1. Open **Settings → MCP Access**, select **Codex**, **Claude Code**, or **Pi**, and copy the command under **Configure once**. Run it on the machine where your agent runs. For a client you've already configured, reuse its existing server entry.
-2. Load your saved project key into the environment variable shown in the instructions, then start the client from that terminal. For an existing server entry, use the variable in its configuration. If you need a key, use **Create MCP key** and save it when it appears. You can also copy the one-time setup command with the newly issued key included.
+1. Open **Settings → MCP Access**, select **Codex**, **Claude Code**, or **Pi**, and copy the example under **Configure once**. Replace `YOUR_VIBE_KANBAN_KEY` with your saved project key. If you need a key, use **Create MCP key** and copy the setup displayed with the new key.
+2. For Codex, add the configuration block to `~/.codex/config.toml` or replace the block for the same server name. For Claude Code or Pi, run the command on the machine where the agent runs. Restart the client to connect.
 3. Ask your agent to list the columns on your Vibe Kanban board. For exact account and project IDs, call `get_identity`.
 
-Use distinct server names and environment variables when one client connects to multiple projects. Other clients can use the MCP URL with Streamable HTTP and an `Authorization: Bearer` header.
+Use distinct server names when one client connects to multiple projects. This setup saves the key in your client's local configuration. Keep the configuration file private. Other clients can use the MCP URL with Streamable HTTP and an `Authorization: Bearer` header.
 
 Each key authorises one team member for one project. The default expiry is 30 days. **Your keys** shows each key's name, project, and expiry. Use **Revoke key** to end access immediately, including for keys set to **Never**. Comments show the member as the author, and server audit logs include the member ID and credential name for changes. Removing a member from an organisation revokes their keys for its projects.
 

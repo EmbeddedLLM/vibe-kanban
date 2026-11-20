@@ -1,36 +1,42 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MCP_SETUP_TOKEN_VARIABLE,
-  mcpSetupCommand,
+  MCP_SETUP_KEY_PLACEHOLDER,
   mcpSetupExample,
+  mcpSetupWithKey,
 } from './mcpSetup';
 
 const url = 'https://board.example.com/mcp';
 
-describe('MCP setup commands', () => {
-  it.each(['codex', 'pi'] as const)(
-    'shows the URL and variable name for %s',
-    (client) => {
-      expect(mcpSetupExample(client, url)).toBe(
-        `${client} mcp add vibe_kanban --url '${url}' --bearer-token-env-var ${MCP_SETUP_TOKEN_VARIABLE}`
-      );
-    }
-  );
-
-  it('leaves the Claude header reference for the client to expand', () => {
-    expect(mcpSetupExample('claude', url)).toBe(
-      `(claude mcp remove --scope user vibe_kanban >/dev/null 2>&1 || true) && claude mcp add --scope user --transport http vibe_kanban '${url}' --header 'Authorization: Bearer \${${MCP_SETUP_TOKEN_VARIABLE}}'`
+describe('MCP setup', () => {
+  it('shows a complete Codex TOML entry with a placeholder', () => {
+    expect(mcpSetupExample('codex', url)).toBe(
+      `[mcp_servers.vibe_kanban]\nurl = "${url}"\nhttp_headers = { Authorization = "Bearer ${MCP_SETUP_KEY_PLACEHOLDER}" }`
     );
   });
 
-  it('still includes the secret in the one-time setup command', () => {
-    expect(
-      mcpSetupCommand('codex', url, {
+  it('uses the Pi syntax for a literal header', () => {
+    expect(mcpSetupExample('pi', url)).toBe(
+      `pi mcp add vibe_kanban --url '${url}' --header 'Authorization=Bearer ${MCP_SETUP_KEY_PLACEHOLDER}'`
+    );
+  });
+
+  it('can replace a Claude entry and sets its bearer header', () => {
+    expect(mcpSetupExample('claude', url)).toBe(
+      `(claude mcp remove --scope user vibe_kanban >/dev/null 2>&1 || true) && claude mcp add --scope user --transport http vibe_kanban '${url}' --header 'Authorization: Bearer ${MCP_SETUP_KEY_PLACEHOLDER}'`
+    );
+  });
+
+  it.each(['codex', 'claude', 'pi'] as const)(
+    'includes the issued key directly in %s setup',
+    (client) => {
+      const setup = mcpSetupWithKey(client, url, {
         id: '12345678-abcd-4abc-abcd-123456789abc',
         token: 'vkm_example',
-      })
-    ).toBe(
-      `export VIBE_KANBAN_MCP_TOKEN_12345678ABCD='vkm_example' && codex mcp add vibe_kanban_12345678abcd --url '${url}' --bearer-token-env-var VIBE_KANBAN_MCP_TOKEN_12345678ABCD`
-    );
-  });
+      });
+      expect(setup).toContain('vibe_kanban_12345678abcd');
+      expect(setup).toContain('Bearer vkm_example');
+      expect(setup).not.toContain(MCP_SETUP_KEY_PLACEHOLDER);
+      expect(setup).not.toContain('bearer-token-env-var');
+    }
+  );
 });

@@ -22,9 +22,9 @@ import {
   type McpCredentialExpiration,
 } from '@/shared/lib/api';
 import {
-  MCP_SETUP_TOKEN_VARIABLE,
-  mcpSetupCommand,
+  MCP_SETUP_KEY_PLACEHOLDER,
   mcpSetupExample,
+  mcpSetupWithKey,
   type McpClient,
 } from '@/shared/lib/mcpSetup';
 import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
@@ -173,23 +173,18 @@ function MemberMcpAccess({ userId }: { userId: string }) {
         description={t('settings.mcpAccess.connectDescription')}
       >
         <AgentClientPicker client={client} onSelect={setClient} />
-        <CopyableField
-          key={client}
-          label={t('settings.mcpAccess.configureOnce')}
-          value={mcpSetupExample(client, mcpUrl)}
-          copyLabel={t('settings.mcpAccess.copyCommand')}
-        />
         <p className="text-sm text-low">
-          <strong className="text-high">
-            {t('settings.mcpAccess.launch')}
-          </strong>{' '}
           <Trans
             t={t}
-            i18nKey="settings.mcpAccess.launchDescription"
-            values={{ variable: MCP_SETUP_TOKEN_VARIABLE }}
-            components={{ variable: <code /> }}
+            i18nKey="settings.mcpAccess.useSavedKey"
+            values={{ placeholder: MCP_SETUP_KEY_PLACEHOLDER }}
+            components={{ placeholder: <code /> }}
           />
         </p>
+        <ClientSetupSnippet
+          client={client}
+          value={mcpSetupExample(client, mcpUrl)}
+        />
         <p className="text-sm text-low">
           <strong className="text-high">
             {t('settings.mcpAccess.verify')}
@@ -406,6 +401,46 @@ function AgentClientPicker({
   );
 }
 
+function ClientSetupSnippet({
+  client,
+  value,
+}: {
+  client: McpClient;
+  value: string;
+}) {
+  const { t } = useTranslation('settings');
+  const isCodex = client === 'codex';
+
+  return (
+    <>
+      <CopyableField
+        key={client}
+        label={t('settings.mcpAccess.configureOnce')}
+        value={value}
+        copyLabel={t(
+          isCodex
+            ? 'settings.mcpAccess.copyConfig'
+            : 'settings.mcpAccess.copyCommand'
+        )}
+        multiline={isCodex}
+      />
+      <p className="text-sm text-low">
+        <strong className="text-high">{t('settings.mcpAccess.launch')}</strong>{' '}
+        {isCodex ? (
+          <Trans
+            t={t}
+            i18nKey="settings.mcpAccess.codexLaunch"
+            components={{ path: <code /> }}
+          />
+        ) : (
+          t('settings.mcpAccess.cliLaunch')
+        )}
+      </p>
+      <p className="text-sm text-low">{t('settings.mcpAccess.keyStorage')}</p>
+    </>
+  );
+}
+
 function IssuedKeySetup({
   issued,
   mcpUrl,
@@ -437,13 +472,15 @@ function IssuedKeySetup({
       </h3>
       <p className="text-sm text-low">{t('settings.mcpAccess.saveKey')}</p>
       <AgentClientPicker client={client} onSelect={onSelectClient} />
-      <CopyableField
-        key={client}
-        label={t('settings.mcpAccess.setupCommand')}
-        value={mcpSetupCommand(client, mcpUrl, issued)}
-        copyLabel={t('settings.mcpAccess.copyCommand')}
+      <ClientSetupSnippet
+        client={client}
+        value={mcpSetupWithKey(client, mcpUrl, issued)}
       />
-      <p className="text-sm text-low">{t('settings.mcpAccess.commandHint')}</p>
+      {client !== 'codex' && (
+        <p className="text-sm text-low">
+          {t('settings.mcpAccess.commandHint')}
+        </p>
+      )}
       <CopyableField
         label={t('settings.mcpAccess.key')}
         value={issued.token}
