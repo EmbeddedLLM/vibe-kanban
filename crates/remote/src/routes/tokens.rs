@@ -21,7 +21,39 @@ use crate::{
 };
 
 pub(super) fn public_router() -> Router<AppState> {
-    Router::new().route("/tokens/refresh", post(refresh_token))
+    Router::new()
+        .route("/tokens/refresh", post(refresh_token))
+        .route("/tokens/revoke", post(revoke_session))
+}
+
+async fn revoke_session(
+    State(state): State<AppState>,
+    Json(payload): Json<TokenRefreshRequest>,
+) -> StatusCode {
+    // A valid refresh token can end its session even if the access token
+    // expired or a refresh has just rotated the token.
+    let Ok(token) = state.jwt().decode_refresh_token(&payload.refresh_token) else {
+        return StatusCode::NO_CONTENT;
+    };
+
+    let status = match AuthSessionRepository::new(state.pool())
+        .revoke(token.session_id)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT,
+        Err(error) => {
+            warn!(?error, session_id = %token.session_id, "failed to revoke auth session");
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    };
+    audit::emit(
+        AuditEvent::system(AuditAction::AuthLogout)
+            .user(token.user_id, Some(token.session_id))
+            .resource("auth_session", Some(token.session_id))
+            .http("POST", "/v1/tokens/revoke", status.as_u16())
+            .description("User logged out"),
+    );
+    status
 }
 
 #[derive(Debug, thiserror::Error)]

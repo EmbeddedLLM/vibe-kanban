@@ -5,6 +5,7 @@ import { OAuthDialog } from '@/shared/dialogs/global/OAuthDialog';
 
 import { Alert } from '@vibe/ui/components/Alert';
 import { Button } from '@vibe/ui/components/Button';
+import { useAppRuntime } from '@/shared/hooks/useAppRuntime';
 import { cn } from '@/shared/lib/utils';
 
 interface LoginRequiredPromptProps {
@@ -31,14 +32,21 @@ export function LoginRequiredPrompt({
   icon,
 }: LoginRequiredPromptProps) {
   const { t } = useTranslation('tasks');
+  const runtime = useAppRuntime();
 
   const handleRedirect = useCallback(() => {
     if (onAction) {
       onAction();
       return;
     }
+    if (runtime === 'remote') {
+      const { pathname, search, hash } = window.location;
+      const query = new URLSearchParams({ next: pathname + search + hash });
+      window.location.assign(`/account?${query}`);
+      return;
+    }
     void OAuthDialog.show({});
-  }, [onAction]);
+  }, [onAction, runtime]);
 
   const Icon = icon ?? LogIn;
 

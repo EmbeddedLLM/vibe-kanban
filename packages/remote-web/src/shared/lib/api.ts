@@ -1,5 +1,5 @@
 import { getToken, triggerRefresh } from "@remote/shared/lib/auth/tokenManager";
-import { clearTokens } from "@remote/shared/lib/auth";
+import { takeTokens } from "@remote/shared/lib/auth";
 import type { ListOrganizationsResponse } from "shared/types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
@@ -247,13 +247,31 @@ export async function authenticatedFetch(
 }
 
 export async function logout(): Promise<void> {
-  try {
-    await authenticatedFetch(`${API_BASE}/v1/oauth/logout`, {
-      method: "POST",
-    });
-  } finally {
-    await clearTokens();
-  }
+  const { accessToken, refreshToken } = await takeTokens();
+  if (!accessToken && !refreshToken) return;
+
+  const request = refreshToken
+    ? fetch(`${API_BASE}/v1/tokens/revoke`, {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      })
+    : fetch(`${API_BASE}/v1/oauth/logout`, {
+        method: "POST",
+        keepalive: true,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+  void request
+    .then((response) => {
+      if (!response.ok && response.status !== 401) {
+        throw new Error(`Session revocation failed (${response.status})`);
+      }
+    })
+    .catch((error) =>
+      console.error("Failed to revoke the signed-out session:", error),
+    );
 }
 
 export async function listOrganizations(): Promise<ListOrganizationsResponse> {

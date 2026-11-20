@@ -1,9 +1,8 @@
 import {
   getAccessToken,
   getRefreshToken,
-  storeTokens,
   clearAccessToken,
-  clearTokens,
+  updateTokensFromRefresh,
 } from "@remote/shared/lib/auth";
 import { shouldRefreshAccessToken } from "shared/jwt";
 import { refreshTokens } from "@remote/shared/lib/api";
@@ -53,12 +52,20 @@ async function doTokenRefresh(): Promise<string> {
 
   const refreshToken = await getRefreshToken();
   if (!refreshToken) {
-    await clearTokens();
     throw new Error("No refresh token available");
   }
 
-  const tokens = await refreshWithRetry(refreshToken);
-  await storeTokens(tokens.access_token, tokens.refresh_token);
+  const tokens = await refreshWithRetry(refreshToken).catch(async (error) => {
+    await updateTokensFromRefresh(refreshToken, null);
+    throw error;
+  });
+  const updated = await updateTokensFromRefresh(refreshToken, {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+  });
+  if (!updated) {
+    throw new Error("Session changed during refresh");
+  }
   return tokens.access_token;
 }
 
@@ -73,9 +80,7 @@ function handleTokenRefresh(): Promise<string> {
       : doTokenRefresh();
 
   const promise = innerPromise
-    .catch(async (error: unknown) => {
-      await clearTokens();
-
+    .catch((error: unknown) => {
       const status = (error as { status?: number }).status;
       if (status === 401) {
         throw new Error("Session expired. Please sign in again.");
