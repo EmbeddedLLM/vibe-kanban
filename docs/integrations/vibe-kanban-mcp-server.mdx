@@ -23,7 +23,7 @@ Use the `/mcp` endpoint on your [self-hosted Vibe Kanban server](/self-hosting/d
 2. For Codex, add the configuration block to `~/.codex/config.toml` or replace the block for the same server name. For Claude Code or Pi, run the command on the machine where the agent runs. Restart the client to connect.
 3. Ask your agent to list the columns on your Vibe Kanban board. For exact account and project IDs, call `get_identity`.
 
-Use distinct server names when one client connects to multiple projects. This setup saves the key in your client's local configuration. Keep the configuration file private. Other clients can use the MCP URL with Streamable HTTP and an `Authorization: Bearer` header.
+Setup uses the server name `vibe_kanban`. To keep multiple project connections in the same client, change each occurrence of that name in the setup for each additional project. This setup saves the key in your client's local configuration. Keep the configuration file private. Other clients can use the MCP URL with Streamable HTTP and an `Authorization: Bearer` header.
 
 Each key authorises one team member for one project. The default expiry is 30 days. **Your keys** shows each key's name, project, and expiry. Use **Revoke key** to end access immediately, including for keys set to **Never**. Comments show the member as the author, and server audit logs include the member ID and credential name for changes. Removing a member from an organisation revokes their keys for its projects.
 

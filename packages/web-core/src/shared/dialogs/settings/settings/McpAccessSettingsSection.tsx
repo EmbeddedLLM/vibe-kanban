@@ -22,9 +22,9 @@ import {
   type McpCredentialExpiration,
 } from '@/shared/lib/api';
 import {
+  MCP_SERVER_NAME,
   MCP_SETUP_KEY_PLACEHOLDER,
-  mcpSetupExample,
-  mcpSetupWithKey,
+  mcpSetup,
   type McpClient,
 } from '@/shared/lib/mcpSetup';
 import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
@@ -181,10 +181,7 @@ function MemberMcpAccess({ userId }: { userId: string }) {
             components={{ placeholder: <code /> }}
           />
         </p>
-        <ClientSetupSnippet
-          client={client}
-          value={mcpSetupExample(client, mcpUrl)}
-        />
+        <ClientSetupSnippet client={client} value={mcpSetup(client, mcpUrl)} />
         <p className="text-sm text-low">
           <strong className="text-high">
             {t('settings.mcpAccess.verify')}
@@ -433,7 +430,7 @@ function ClientSetupSnippet({
             components={{ path: <code /> }}
           />
         ) : (
-          t('settings.mcpAccess.cliLaunch')
+          t('settings.mcpAccess.cliLaunch', { name: MCP_SERVER_NAME })
         )}
       </p>
       <p className="text-sm text-low">{t('settings.mcpAccess.keyStorage')}</p>
@@ -474,7 +471,7 @@ function IssuedKeySetup({
       <AgentClientPicker client={client} onSelect={onSelectClient} />
       <ClientSetupSnippet
         client={client}
-        value={mcpSetupWithKey(client, mcpUrl, issued)}
+        value={mcpSetup(client, mcpUrl, issued.token)}
       />
       {client !== 'codex' && (
         <p className="text-sm text-low">

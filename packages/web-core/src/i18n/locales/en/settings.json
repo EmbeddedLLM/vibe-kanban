@@ -66,7 +66,7 @@
       "configureOnce": "Configure once",
       "launch": "Launch",
       "codexLaunch": "Add this block to <path>~/.codex/config.toml</path>, then restart Codex. If the same server name is already listed, replace its block.",
-      "cliLaunch": "Run the command on the machine where your agent runs, then restart the client.",
+      "cliLaunch": "Run the command on the machine where your agent runs, then restart the client. This updates the {{name}} entry in your user settings.",
       "keyStorage": "This setup saves the key in your client’s local configuration. Keep that file private.",
       "verify": "Verify",
       "verifyDescription": "Ask your agent, “Use Vibe Kanban to list the columns on my board.”",

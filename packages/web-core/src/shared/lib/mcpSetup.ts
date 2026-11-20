@@ -1,17 +1,18 @@
 export type McpClient = 'codex' | 'claude' | 'pi';
 
+export const MCP_SERVER_NAME = 'vibe_kanban';
 export const MCP_SETUP_KEY_PLACEHOLDER = 'YOUR_VIBE_KANBAN_KEY';
 
 function shellQuote(value: string): string {
   return "'" + value.replaceAll("'", "'\"'\"'") + "'";
 }
 
-function mcpSetup(
+export function mcpSetup(
   client: McpClient,
   url: string,
-  name: string,
-  token: string
+  token = MCP_SETUP_KEY_PLACEHOLDER
 ): string {
+  const name = MCP_SERVER_NAME;
   const bearer = 'Bearer ' + token;
   if (client === 'codex') {
     return [
@@ -31,17 +32,4 @@ function mcpSetup(
   }
 
   return `pi mcp add ${name} --url ${endpoint} --header ${shellQuote('Authorization=' + bearer)}`;
-}
-
-export function mcpSetupExample(client: McpClient, url: string): string {
-  return mcpSetup(client, url, 'vibe_kanban', MCP_SETUP_KEY_PLACEHOLDER);
-}
-
-export function mcpSetupWithKey(
-  client: McpClient,
-  url: string,
-  credential: { id: string; token: string }
-): string {
-  const suffix = credential.id.replaceAll('-', '').slice(0, 12);
-  return mcpSetup(client, url, 'vibe_kanban_' + suffix, credential.token);
 }
