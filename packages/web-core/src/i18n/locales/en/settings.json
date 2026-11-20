@@ -67,7 +67,7 @@
       "client": "Agent client",
       "setupCommand": "Setup command",
       "copyCommand": "Copy command",
-      "commandHint": "The command contains your key and may be saved in shell history. Run it in the terminal you use to start your agent.",
+      "commandHint": "This command contains your key and may be saved in shell history. After it runs, start a new client session from the same terminal so it can read the key.",
       "leaveTitle": "Leave key setup?",
       "leaveMessage": "Copy the key or setup command before leaving. This secret is shown only once.",
       "leaveWhileCreating": "The key is still being created. If it appears later under Your keys, you can revoke it there.",

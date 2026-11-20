@@ -44,6 +44,14 @@ use crate::{
 
 pub(super) fn router(state: &AppState) -> Router<AppState> {
     let app = state.clone();
+    let mut transport_config = StreamableHttpServerConfig::default()
+        .with_stateful_mode(false)
+        .with_json_response(true);
+    if let Ok(public_url) = url::Url::parse(&state.server_public_base_url)
+        && let Some(host) = public_url.host_str()
+    {
+        transport_config.allowed_hosts.push(host.to_owned());
+    }
     let service = StreamableHttpService::new(
         move || {
             Ok(BoardMcp {
@@ -52,9 +60,7 @@ pub(super) fn router(state: &AppState) -> Router<AppState> {
             })
         },
         Arc::new(NeverSessionManager::default()),
-        StreamableHttpServerConfig::default()
-            .with_stateful_mode(false)
-            .with_json_response(true),
+        transport_config,
     );
 
     Router::new()

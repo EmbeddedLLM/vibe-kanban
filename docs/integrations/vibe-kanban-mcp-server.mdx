@@ -17,10 +17,10 @@ This page covers connecting **external MCP clients** to Vibe Kanban's MCP server
 
 ## Connect to a self-hosted board
 
-Use the `/mcp` endpoint on your [self-hosted Vibe Kanban server](/self-hosting/deploy-docker). Use HTTPS for a public endpoint.
+Use the `/mcp` endpoint on your [self-hosted Vibe Kanban server](/self-hosting/deploy-docker). Set `SERVER_PUBLIC_BASE_URL` to the board URL that clients use so the MCP server accepts its hostname. Use HTTPS for a public endpoint.
 
 1. Sign in and open **Settings → MCP Access**. Select an organisation and project, enter a key name, choose an expiry, and select **Create MCP key**.
-2. Pick **Codex**, **Claude Code**, or **Pi** and copy the setup command. It contains the newly issued key. Run it in a private terminal and start the client from the same shell. Save the key in your secret store for future sessions. Other clients can use the MCP URL with Streamable HTTP and an `Authorization: Bearer` header.
+2. Pick **Codex**, **Claude Code**, or **Pi** and copy the setup command. It contains the newly issued key. Run it in a private terminal, then start a new client session from the same shell so it can read the key. Running the Claude Code command again replaces the generated entry for that key. Save the key in your secret store for future sessions. Other clients can use the MCP URL with Streamable HTTP and an `Authorization: Bearer` header.
 3. Call `get_identity` to confirm the member and project IDs. The other tools list statuses, search issues, create and move issues, add assignees, and post comments.
 
 Each key authorises one team member for one project. The default expiry is 30 days. **Your keys** shows each key's name, project, and expiry. Use **Revoke key** to end access immediately, including for keys set to **Never**. Comments show the member as the author, and server audit logs include the member ID and credential name for changes. Removing a member from an organisation revokes their keys for its projects.

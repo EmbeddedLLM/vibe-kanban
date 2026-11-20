@@ -17,7 +17,9 @@ export function mcpSetupCommand(
 
   if (client === 'claude') {
     const header = shellQuote('Authorization: Bearer ${' + variable + '}');
-    return `${exportKey} && claude mcp add --scope user --transport http ${name} ${endpoint} --header ${header}`;
+    const remove = `claude mcp remove --scope user ${name} >/dev/null 2>&1`;
+    const add = `claude mcp add --scope user --transport http ${name} ${endpoint} --header ${header}`;
+    return `${exportKey} && (${remove} || true) && ${add}`;
   }
 
   return `${exportKey} && ${client} mcp add ${name} --url ${endpoint} --bearer-token-env-var ${variable}`;
