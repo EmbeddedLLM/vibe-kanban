@@ -3,117 +3,58 @@ title: "Deploy with Docker Compose"
 description: "Deploy Vibe Kanban Cloud on any server using Docker Compose"
 ---
 
-This guide covers deploying Vibe Kanban Cloud on any Linux server using Docker Compose. This approach works with any cloud provider (AWS, DigitalOcean, Hetzner, etc.) or on-premises server.
+Start a team board with its own PostgreSQL database, HTTPS, invite-only accounts, and a shared MCP endpoint. The steps use Docker Compose on a Linux server.
 
 ## Prerequisites
 
-- A Linux server with:
-  - **Docker** and **Docker Compose** v2.0+ installed
-  - **2GB RAM** minimum (4GB recommended)
-  - **10GB disk space**
-  - A **domain name** pointing to your server
-- **SSL certificate** (we'll use Caddy for automatic HTTPS)
-- One authentication method:
-  - OAuth credentials from [GitHub](https://github.com/settings/developers) or [Google](https://console.cloud.google.com/apis/credentials), or
-  - bootstrap local auth credentials for a single self-hosted admin user
+- A Linux server with Docker Engine, Docker Compose v2, Git, and OpenSSL.
+- A hostname such as `kanban.example.com` pointing to the server in DNS.
+- Inbound TCP ports 80 and 443 available for Caddy. Caddy obtains and renews the HTTPS certificate. The Compose file keeps PostgreSQL and ElectricSQL on its private network.
 
 ## Step 1: Prepare Your Server
 
-SSH into your server and install Docker if not already installed:
+On the server, install Docker Engine and the Compose plugin. [Docker Engine installation](https://docs.docker.com/engine/install/)
+
+Clone the team deployment branch.
 
 ```bash
-# Install Docker (Ubuntu/Debian)
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-
-# Log out and back in for group changes to take effect
-```
-
-Clone the Vibe Kanban repository:
-
-```bash
-git clone https://github.com/BloopAI/vibe-kanban.git
-cd vibe-kanban
+git clone --single-branch --branch self-hosted-password-invites \
+  https://github.com/EmbeddedLLM/vibe-kanban.git vibe-kanban-prod
+cd vibe-kanban-prod
 ```
 
 ## Step 2: Configure Authentication
 
-Choose one of these options:
+### Invite-only password accounts
 
-### Option A: OAuth
+The default in this guide is `SELF_HOST_PASSWORD_ACCOUNTS=true`. On the first start with an empty database, the server creates an operator account using the email and password in `.env.remote`. The first operator's display name is **Admin**. Teammates choose their own display names and passwords when they accept an invite.
 
-Update your OAuth application callback URLs to use your domain:
+### Optional OAuth
 
-<Tabs>
-<Tab title="GitHub">
-- **Authorization callback URL**: `https://your-domain.com/v1/oauth/github/callback`
-</Tab>
-
-<Tab title="Google">
-- **Authorized redirect URI**: `https://your-domain.com/v1/oauth/google/callback`
-</Tab>
-</Tabs>
-
-### Option B: Bootstrap Local Auth
-
-If you do not want to configure OAuth yet, you can bootstrap a single local admin login:
-
-```env
-SELF_HOST_LOCAL_AUTH_EMAIL=admin@example.com
-SELF_HOST_LOCAL_AUTH_PASSWORD=replace_with_a_strong_password
-```
-
-This is useful for initial self-hosted setup, but it is a single shared credential pair rather than a full multi-user identity system.
+To use OAuth on a fresh deployment, set `SELF_HOST_PASSWORD_ACCOUNTS=false`, omit the bootstrap email and password, and supply `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET` or `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`. Use `https://kanban.example.com/v1/oauth/github/callback` or `https://kanban.example.com/v1/oauth/google/callback` as the provider callback, with your own hostname.
 
 ## Step 3: Create Environment File
 
-Generate a secure JWT secret:
+Run this from the repository root. Replace the example hostname and admin email before running the command. The Compose project name determines the name of the new database volume. Use a unique name if you already have another board on this server.
 
 ```bash
-openssl rand -base64 48
-```
-
-Create `.env.remote` in the repository root:
-
-```env .env.remote
-# Required secrets
-VIBEKANBAN_REMOTE_JWT_SECRET=<your_generated_jwt_secret>
-ELECTRIC_ROLE_PASSWORD=<secure_password_for_electric>
-DB_PASSWORD=<secure_database_password>
-
-# Your domain
-DOMAIN=your-domain.com
-
-# Relay API base URL (required if you enable relay/tunnel)
-VITE_RELAY_API_BASE_URL=https://relay.your-domain.com
-
-# Invite-only email and password accounts on a fresh database
+(
+  umask 077
+  set -o noclobber
+  cat > .env.remote <<EOF
+COMPOSE_PROJECT_NAME=team-kanban
+DOMAIN=kanban.example.com
+DB_PASSWORD=$(openssl rand -hex 32)
+ELECTRIC_ROLE_PASSWORD=$(openssl rand -hex 32)
+VIBEKANBAN_REMOTE_JWT_SECRET=$(openssl rand -base64 48)
 SELF_HOST_PASSWORD_ACCOUNTS=true
 SELF_HOST_LOCAL_AUTH_EMAIL=admin@example.com
-SELF_HOST_LOCAL_AUTH_PASSWORD=<password_with_at_least_12_characters>
-
-# OAuth providers for deployments that disable password accounts
-GITHUB_OAUTH_CLIENT_ID=
-GITHUB_OAUTH_CLIENT_SECRET=
-GOOGLE_OAUTH_CLIENT_ID=
-GOOGLE_OAUTH_CLIENT_SECRET=
-
-# Email notifications (optional)
-LOOPS_EMAIL_API_KEY=
-
-# Loops transactional email template IDs (optional — defaults are the upstream templates).
-# Override these with your own Loops account template IDs if using a custom Loops account.
-LOOPS_INVITE_TEMPLATE_ID=cmhvy2wgs3s13z70i1pxakij9
-LOOPS_REVIEW_READY_TEMPLATE_ID=cmj47k5ge16990iylued9by17
-LOOPS_REVIEW_FAILED_TEMPLATE_ID=cmj49ougk1c8s0iznavijdqpo
-
-# Attachments (optional — only set when you want issue attachments enabled)
-AZURE_STORAGE_ACCOUNT_NAME=
-AZURE_STORAGE_ACCOUNT_KEY=
-AZURE_STORAGE_CONTAINER_NAME=issue-attachments
-AZURE_STORAGE_ENDPOINT_URL=
-AZURE_STORAGE_PUBLIC_ENDPOINT_URL=
+SELF_HOST_LOCAL_AUTH_PASSWORD=$(openssl rand -hex 24)
+EOF
+)
 ```
+
+Save the generated admin password in your password manager. Keep `.env.remote` private and reuse it when updating this deployment.
 
 ## Step 4: Create Production Docker Compose
 
@@ -128,7 +69,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      DOMAIN: ${DOMAIN}
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env.remote}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
@@ -143,7 +84,7 @@ services:
     environment:
       POSTGRES_DB: remote
       POSTGRES_USER: remote
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-remote}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env.remote}
     volumes:
       - remote-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -158,7 +99,7 @@ services:
     working_dir: /app
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://electric_sync:${ELECTRIC_ROLE_PASSWORD}@remote-db:5432/remote?sslmode=disable
+      DATABASE_URL: postgresql://electric_sync:${ELECTRIC_ROLE_PASSWORD:?set ELECTRIC_ROLE_PASSWORD in .env.remote}@remote-db:5432/remote?sslmode=disable
       PG_PROXY_PORT: 65432
       LOGICAL_PUBLISHER_HOST: electric
       AUTH_MODE: insecure
@@ -187,7 +128,7 @@ services:
         condition: service_healthy
     environment:
       RUST_LOG: info,remote=info
-      SERVER_DATABASE_URL: postgres://remote:${DB_PASSWORD:-remote}@remote-db:5432/remote
+      SERVER_DATABASE_URL: postgres://remote:${DB_PASSWORD:?set DB_PASSWORD in .env.remote}@remote-db:5432/remote
       SERVER_LISTEN_ADDR: 0.0.0.0:8081
       ELECTRIC_URL: http://electric:3000
       SERVER_PUBLIC_BASE_URL: https://${DOMAIN}
@@ -195,7 +136,7 @@ services:
       GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
-      VIBEKANBAN_REMOTE_JWT_SECRET: ${VIBEKANBAN_REMOTE_JWT_SECRET}
+      VIBEKANBAN_REMOTE_JWT_SECRET: ${VIBEKANBAN_REMOTE_JWT_SECRET:?set VIBEKANBAN_REMOTE_JWT_SECRET in .env.remote}
       ELECTRIC_ROLE_PASSWORD: ${ELECTRIC_ROLE_PASSWORD}
       LOOPS_EMAIL_API_KEY: ${LOOPS_EMAIL_API_KEY:-}
       LOOPS_INVITE_TEMPLATE_ID: ${LOOPS_INVITE_TEMPLATE_ID:-cmhvy2wgs3s13z70i1pxakij9}
@@ -225,7 +166,7 @@ volumes:
 
 ## Step 5: Create Caddyfile
 
-Create a `Caddyfile` in the `crates/remote` directory for automatic HTTPS (core app/API):
+Create `crates/remote/Caddyfile` to serve the board and its MCP endpoint over HTTPS.
 
 ```text Caddyfile
 {$DOMAIN} {
@@ -234,7 +175,7 @@ Create a `Caddyfile` in the `crates/remote` directory for automatic HTTPS (core 
 ```
 
 <Info>
-This base deployment serves the main Cloud app/API only. Relay/tunnel support is optional and requires additional relay routing plus wildcard DNS/TLS for your relay domain.
+The board and MCP endpoint share the domain in `.env.remote`. See [relay setup](#optional-enable-relaytunnel-in-production) to connect remote development machines through a relay.
 </Info>
 
 ## Step 6: Deploy
@@ -242,34 +183,44 @@ This base deployment serves the main Cloud app/API only. Relay/tunnel support is
 ```bash
 cd crates/remote
 
-# Build and start all services
-docker compose --env-file ../../.env.remote -f docker-compose.prod.yml up -d --build
-
-# View logs
-docker compose -f docker-compose.prod.yml logs -f
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml config --quiet
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml up --build --wait
 ```
 
 <Info>
-The first build takes 10-15 minutes. Subsequent deployments are faster as Docker caches the build layers.
+Allow time for the first image build and for Caddy to obtain the certificate. Run the remaining Compose commands from `crates/remote` using the same environment file and project name.
 </Info>
 
 ## Step 7: Verify Deployment
 
-1. Open `https://your-domain.com` in your browser
-2. You should see the Vibe Kanban Cloud login page
-3. Sign in with your configured auth method
-4. Create your first organisation and project
+Check the health endpoint with your own hostname. A healthy server returns `"status": "ok"`.
+
+```bash
+curl -fsS https://kanban.example.com/v1/health
+```
+
+1. Open the board at the same HTTPS hostname. In password mode, sign in with the admin email and password from `.env.remote`.
+2. Open **Settings → Organizations**, create a team organisation, and enter the name you want. Use this team organisation for invitations.
+3. Select the team organisation under **Settings → Projects**. Select **Initial Project**, enter your preferred project name, and save.
+
+Once you confirm the operator can sign in, remove `SELF_HOST_LOCAL_AUTH_EMAIL` and `SELF_HOST_LOCAL_AUTH_PASSWORD` from `.env.remote`. Recreate the server container to remove the bootstrap credentials from its environment.
+
+```bash
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml up -d --no-deps --wait remote-server
+```
+
+Sign in again using the password you saved to confirm the operator account works after the restart.
 
 ### Invite teammates with password accounts
 
-With `SELF_HOST_PASSWORD_ACCOUNTS=true`, the first startup creates the operator account from `SELF_HOST_LOCAL_AUTH_EMAIL` and `SELF_HOST_LOCAL_AUTH_PASSWORD`. Once you can sign in, remove both initial credential variables and recreate the container. Keep the PostgreSQL volume and `VIBEKANBAN_REMOTE_JWT_SECRET` across updates. GitHub and Google sign-in are absent in this mode.
-
-1. In a team organisation, open **Settings → Organisations → Members** and select **Invite member**.
+1. In the team organisation, open **Settings → Organizations → Members** and select **Invite member**.
 2. Enter an email for a new account, choose their role, and select **Create invitation**. Copy the link and share it privately. Password-account invitations are delivered manually.
 3. Your teammate opens the link, checks the email and organisation, and chooses a display name and password. They can then sign in with that email and password.
 4. Under **Pending invitations**, you can copy a valid link again, revoke it, or replace it. Links expire after seven days and can be used once.
 
-Each member can create a project-scoped key under **Settings → MCP Access** and choose when it expires. The default is 30 days. A key set to **Never** stays active until it is revoked or the member loses project access. The [MCP setup guide](/integrations/vibe-kanban-mcp-server#connect-to-a-self-hosted-board) covers connecting Codex, Claude Code, and Pi with a saved or newly issued key. Other clients can use the MCP URL with Streamable HTTP and the bearer key. Kanban changes are attributed to the key’s owner.
+### Connect team agents
+
+Each member can create a project-scoped key under **Settings → MCP Access** and choose when it expires. The default is 30 days. A key set to **Never** stays active until it is revoked or the member loses project access. Follow the [MCP setup guide](/integrations/vibe-kanban-mcp-server#connect-to-a-self-hosted-board) for Codex, Claude Code, and Pi. Other clients can use `https://kanban.example.com/mcp` on your domain with Streamable HTTP and the bearer key. Ask the agent to list the columns on the board to check its connection. Kanban changes are attributed to the key’s owner.
 
 ### Recover a password account
 
@@ -304,7 +255,7 @@ Relay/tunnel support requires:
         condition: service_healthy
     environment:
       RUST_LOG: info
-      SERVER_DATABASE_URL: postgres://remote:${DB_PASSWORD:-remote}@remote-db:5432/remote
+      SERVER_DATABASE_URL: postgres://remote:${DB_PASSWORD:?set DB_PASSWORD in .env.remote}@remote-db:5432/remote
       RELAY_LISTEN_ADDR: 0.0.0.0:8082
       VIBEKANBAN_REMOTE_JWT_SECRET: ${VIBEKANBAN_REMOTE_JWT_SECRET}
 ```
@@ -322,14 +273,11 @@ Standard ACME HTTP challenge does not issue wildcard certificates. For wildcard 
 
 ## Updating
 
-To update to a new version:
+Back up the database before updating. Keep the Compose project name, database volume, and JWT secret across upgrades. From `crates/remote`, update the checked-out deployment branch and start the new build.
 
 ```bash
-cd vibe-kanban
-git pull origin main
-
-cd crates/remote
-docker compose --env-file ../../.env.remote -f docker-compose.prod.yml up -d --build
+git pull --ff-only
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml up --build --wait
 ```
 
 ## Backup and Restore
@@ -337,14 +285,17 @@ docker compose --env-file ../../.env.remote -f docker-compose.prod.yml up -d --b
 ### Backup Database
 
 ```bash
-docker compose -f docker-compose.prod.yml exec remote-db \
+umask 077
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml exec -T remote-db \
   pg_dump -U remote remote > backup_$(date +%Y%m%d).sql
 ```
 
 ### Restore Database
 
+Restore the backup into an empty database before starting the board.
+
 ```bash
-docker compose -f docker-compose.prod.yml exec -T remote-db \
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml exec -T remote-db \
   psql -U remote remote < backup_20240101.sql
 ```
 
@@ -354,16 +305,16 @@ docker compose -f docker-compose.prod.yml exec -T remote-db \
 
 ```bash
 # All services
-docker compose -f docker-compose.prod.yml logs -f
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml logs -f
 
 # Specific service
-docker compose -f docker-compose.prod.yml logs -f remote-server
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml logs -f remote-server
 ```
 
 ### Check Service Health
 
 ```bash
-docker compose -f docker-compose.prod.yml ps
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml ps
 ```
 
 ## Troubleshooting
@@ -374,7 +325,7 @@ Browsers can queue API requests behind live board sync requests on HTTP/1.1. The
 </Accordion>
 
 <Accordion title="SSL certificate issues">
-Caddy automatically obtains SSL certificates from Let's Encrypt. Ensure:
+Caddy obtains the HTTPS certificate automatically. Check that:
 - Your domain's DNS is correctly pointing to your server
 - Ports 80 and 443 are open in your firewall
 - Your domain is correctly set in the environment
@@ -384,8 +335,8 @@ Caddy automatically obtains SSL certificates from Let's Encrypt. Ensure:
 The server may start before the database is ready. Check:
 
 ```bash
-docker compose -f docker-compose.prod.yml logs remote-db
-docker compose -f docker-compose.prod.yml restart remote-server
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml logs remote-db
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml restart remote-server
 ```
 </Accordion>
 
@@ -397,7 +348,7 @@ ElectricSQL requires the `electric_sync` database user, which the Remote Server 
 3. Restart ElectricSQL after the Remote Server is healthy:
 
 ```bash
-docker compose -f docker-compose.prod.yml restart electric
+docker compose --env-file ../../.env.remote -f docker-compose.prod.yml restart electric
 ```
 </Accordion>
 
