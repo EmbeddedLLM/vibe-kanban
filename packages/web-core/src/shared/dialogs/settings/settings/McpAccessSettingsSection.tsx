@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Button } from '@vibe/ui/components/Button';
 import { ConfirmDialog } from '@vibe/ui/components/ConfirmDialog';
 import { Input } from '@vibe/ui/components/Input';
@@ -21,7 +21,12 @@ import {
   type McpCredential,
   type McpCredentialExpiration,
 } from '@/shared/lib/api';
-import { mcpSetupCommand, type McpClient } from '@/shared/lib/mcpSetup';
+import {
+  MCP_SETUP_TOKEN_VARIABLE,
+  mcpSetupCommand,
+  mcpSetupExample,
+  type McpClient,
+} from '@/shared/lib/mcpSetup';
 import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
 import { useOrganizationStore } from '@/shared/stores/useOrganizationStore';
 import { SettingsCard } from './shared/SettingsComponents';
@@ -33,6 +38,12 @@ const expirationOptions = [
   ['ninety_days', 'settings.mcpAccess.ninetyDays'],
   ['one_year', 'settings.mcpAccess.oneYear'],
   ['never', 'settings.mcpAccess.never'],
+] as const;
+
+const agentClients = [
+  ['codex', 'Codex'],
+  ['claude', 'Claude Code'],
+  ['pi', 'Pi'],
 ] as const;
 
 export function McpAccessSettingsSection() {
@@ -58,6 +69,7 @@ function MemberMcpAccess({ userId }: { userId: string }) {
   const projectField = useId();
   const nameField = useId();
   const expirationField = useId();
+  const [client, setClient] = useState<McpClient>('codex');
   const [organizationChoice, setOrganizationChoice] = useState('');
   const [projectChoice, setProjectChoice] = useState('');
   const [name, setName] = useState('');
@@ -156,6 +168,41 @@ function MemberMcpAccess({ userId }: { userId: string }) {
 
   return (
     <>
+      <SettingsCard
+        title={t('settings.mcpAccess.connect')}
+        description={t('settings.mcpAccess.connectDescription')}
+      >
+        <AgentClientPicker client={client} onSelect={setClient} />
+        <CopyableField
+          key={client}
+          label={t('settings.mcpAccess.configureOnce')}
+          value={mcpSetupExample(client, mcpUrl)}
+          copyLabel={t('settings.mcpAccess.copyCommand')}
+        />
+        <p className="text-sm text-low">
+          <strong className="text-high">
+            {t('settings.mcpAccess.launch')}
+          </strong>{' '}
+          <Trans
+            t={t}
+            i18nKey="settings.mcpAccess.launchDescription"
+            values={{ variable: MCP_SETUP_TOKEN_VARIABLE }}
+            components={{ variable: <code /> }}
+          />
+        </p>
+        <p className="text-sm text-low">
+          <strong className="text-high">
+            {t('settings.mcpAccess.verify')}
+          </strong>{' '}
+          {t('settings.mcpAccess.verifyDescription')}
+        </p>
+        <CopyableField
+          label={t('settings.mcpAccess.url')}
+          value={mcpUrl}
+          copyLabel={t('settings.mcpAccess.copyUrl')}
+        />
+      </SettingsCard>
+
       <SettingsCard
         title={t('settings.mcpAccess.create')}
         description={t('settings.mcpAccess.description')}
@@ -290,20 +337,11 @@ function MemberMcpAccess({ userId }: { userId: string }) {
             key={issued.id}
             issued={issued}
             mcpUrl={mcpUrl}
+            client={client}
+            onSelectClient={setClient}
             onClose={closeIssuedKey}
           />
         )}
-      </SettingsCard>
-
-      <SettingsCard
-        title={t('settings.mcpAccess.connect')}
-        description={t('settings.mcpAccess.connectDescription')}
-      >
-        <CopyableField
-          label={t('settings.mcpAccess.url')}
-          value={mcpUrl}
-          copyLabel={t('settings.mcpAccess.copyUrl')}
-        />
       </SettingsCard>
 
       <SettingsCard title={t('settings.mcpAccess.yourKeys')}>
@@ -338,19 +376,51 @@ function MemberMcpAccess({ userId }: { userId: string }) {
   );
 }
 
+function AgentClientPicker({
+  client,
+  onSelect,
+}: {
+  client: McpClient;
+  onSelect: (client: McpClient) => void;
+}) {
+  const { t } = useTranslation('settings');
+  return (
+    <div
+      role="group"
+      aria-label={t('settings.mcpAccess.client')}
+      className="flex flex-wrap gap-2"
+    >
+      {agentClients.map(([value, label]) => (
+        <Button
+          key={value}
+          type="button"
+          size="sm"
+          variant={value === client ? 'default' : 'outline'}
+          aria-pressed={value === client}
+          onClick={() => onSelect(value)}
+        >
+          {label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function IssuedKeySetup({
   issued,
   mcpUrl,
+  client,
+  onSelectClient,
   onClose,
 }: {
   issued: { id: string; name: string; token: string };
   mcpUrl: string;
+  client: McpClient;
+  onSelectClient: (client: McpClient) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation('settings');
-  const clientField = useId();
   const setupHeading = useRef<HTMLHeadingElement>(null);
-  const [client, setClient] = useState<McpClient>('codex');
 
   useEffect(() => {
     setupHeading.current?.focus();
@@ -366,35 +436,7 @@ function IssuedKeySetup({
         {t('settings.mcpAccess.created', { name: issued.name })}
       </h3>
       <p className="text-sm text-low">{t('settings.mcpAccess.saveKey')}</p>
-      <div className="space-y-2">
-        <p id={clientField} className="text-sm font-medium">
-          {t('settings.mcpAccess.client')}
-        </p>
-        <div
-          role="group"
-          aria-labelledby={clientField}
-          className="flex flex-wrap gap-2"
-        >
-          {(
-            [
-              ['codex', 'Codex'],
-              ['claude', 'Claude Code'],
-              ['pi', 'Pi'],
-            ] as const
-          ).map(([value, label]) => (
-            <Button
-              key={value}
-              type="button"
-              size="sm"
-              variant={value === client ? 'default' : 'outline'}
-              aria-pressed={value === client}
-              onClick={() => setClient(value)}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
-      </div>
+      <AgentClientPicker client={client} onSelect={onSelectClient} />
       <CopyableField
         key={client}
         label={t('settings.mcpAccess.setupCommand')}
